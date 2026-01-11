@@ -1,0 +1,21 @@
+{
+  "name": "Med-Doc Pro",
+  "short_name": "Med-Doc",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f2f4f8",
+  "theme_color": "#005088",
+  "description": "AI Medical Document Generator for Doctors",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

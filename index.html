@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="description" content="AI Medical Document Generator v4.3">
+<meta name="theme-color" content="#005088">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Med-Doc">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="manifest" href="manifest.json">
+
+<title>Med-Doc Gen v4.3 (Consult Master)</title>
+<style>
+  /* --- ベース設定 --- */
+  :root {
+    --primary: #005088;
+    --primary-dark: #003f6b;
+    --accent: #d35400;
+    --bg: #f2f4f8;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --border: #ced4da;
+    --sa-top: env(safe-area-inset-top, 20px);
+    --sa-bottom: env(safe-area-inset-bottom, 20px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    background-color: var(--bg); color: var(--text);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, sans-serif;
+    padding-top: calc(var(--sa-top) + 10px);
+    padding-bottom: calc(var(--sa-bottom) + 30px);
+    font-size: 15px;
+    overscroll-behavior-y: none; 
+  }
+  .container {
+    width: 100%; max-width: 600px; margin: 0 auto; padding: 0 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  /* --- ヘッダー --- */
+  header { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+  h1 { font-size: 18px; font-weight: 800; color: var(--primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: 700; background: #e3f2fd; color: #0277bd; border: 1px solid #b3e5fc; }
+  button.btn-settings { font-size: 22px; background: none; border: none; padding: 4px; cursor: pointer; opacity: 0.6; }
+
+  /* --- 設定エリア --- */
+  #settingsOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 99; }
+  #settingsArea {
+    background: #fff; border: 1px solid var(--border); padding: 20px; 
+    border-radius: 12px; display: none; flex-direction: column; gap: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1); z-index: 100;
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 90%; max-width: 400px;
+  }
+  .setting-group { display: flex; flex-direction: column; gap: 6px; }
+  .setting-label { font-size: 13px; font-weight: 700; color: #444; }
+  .setting-input { padding: 12px; border: 1px solid #bbb; border-radius: 8px; font-size: 15px; background: #f9f9f9; }
+  select.setting-input { background-color: #fff; }
+
+  /* --- タブ --- */
+  .tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; background: #e9ecef; padding: 6px; border-radius: 12px; }
+  .tab {
+    padding: 10px; font-size: 13px; font-weight: 700; 
+    border-radius: 8px; border: none; background: transparent; 
+    color: #6c757d; transition: all 0.2s; cursor: pointer;
+  }
+  .tab.active { background: #fff; color: var(--primary); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+
+  /* --- カード --- */
+  .card {
+    background: var(--surface); border-radius: 12px; padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .label-row { display: flex; justify-content: space-between; align-items: center; }
+  label { font-weight: 700; font-size: 13px; color: #555; display: flex; align-items: center; gap: 6px; }
+
+  /* --- 固定入力枠 (Consult/Letter用) --- */
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; display: none; /* デフォルト非表示 */ }
+  .field-full { grid-column: 1 / -1; }
+  .input-field {
+    width: 100%; padding: 10px; border: 1px solid #bbb; border-radius: 8px;
+    font-size: 14px; background: #fdfdfd;
+  }
+  .input-field:focus { border-color: var(--primary); outline: none; background: #fff; }
+  .field-label { font-size: 11px; font-weight: bold; color: #666; margin-bottom: 4px; display: block; }
+
+  /* --- カメラ --- */
+  .btn-camera {
+    width: 100%; padding: 14px; 
+    border: 2px dashed #aab7c4; border-radius: 10px;
+    background: #f8fbff; color: var(--primary); 
+    font-size: 14px; font-weight: 700;
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    cursor: pointer;
+  }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 10px; }
+  .thumb-container { position: relative; width: 100%; padding-top: 100%; border-radius: 8px; overflow: hidden; background: #eee; }
+  .thumb-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+  .btn-remove-thumb {
+    position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6); color: #fff; border: none;
+    border-radius: 50%; width: 20px; height: 20px; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+
+  /* --- メインテキスト --- */
+  textarea {
+    width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+    font-size: 16px; line-height: 1.6; resize: none; background: #fff;
+    font-family: inherit; -webkit-appearance: none;
+  }
+  textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+  #inputText { min-height: 100px; }
+  #outputText { min-height: 350px; background: #fcfcfc; border-color: #d1d9e6; color: #212529; font-family: "Hiragino Sans", sans-serif; }
+
+  /* --- ボタン --- */
+  .btn-main {
+    width: 100%; padding: 16px; border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s;
+  }
+  .btn-main:active { opacity: 0.8; }
+  .btn-generate { background: var(--primary); color: #fff; }
+  .btn-generate:disabled { background: #95a5a6; }
+  .btn-clear-imgs { font-size:12px; color:#c0392b; background:none; border:none; text-decoration:underline; cursor:pointer; }
+  .btn-continue { background: #f39c12; color: #fff; margin-top: 10px; display: none; }
+  .btn-copy { background: #27ae60; color: #fff; margin-top: 10px; }
+  .hint { font-size: 12px; color: #666; background: #eef2f5; padding: 8px 12px; border-radius: 6px; line-height: 1.4; }
+  #cameraInput { display: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  
+  <header>
+    <h1>Med-Doc <span style="font-size:0.8em; opacity:0.6;">Pro</span>
+      <span class="badge" id="modelBadge">Loading...</span>
+    </h1>
+    <button class="btn-settings" onclick="toggleSettings()">⚙️</button>
+  </header>
+
+  <div id="settingsOverlay" onclick="toggleSettings()"></div>
+  <div id="settingsArea">
+    <div style="text-align:center; font-weight:bold; margin-bottom:10px;">設定</div>
+    <div class="setting-group">
+      <div class="setting-label">Gemini API Key</div>
+      <input type="password" id="apiKeyInput" class="setting-input" placeholder="AIzaSy..." onchange="saveApiKey()">
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">使用AIモデル</div>
+      <select id="modelSelect" class="setting-input" onchange="changeModel()">
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (★推奨)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (高速)</option>
+        <option value="custom">カスタム...</option>
+      </select>
+      <input type="text" id="customModelInput" class="setting-input" style="display:none; margin-top:6px;" placeholder="gemini-experimental">
+    </div>
+    <div style="text-align:right; margin-top:10px;">
+      <button onclick="toggleSettings()" style="padding:10px 20px; border:none; background:var(--primary); color:#fff; border-radius:6px; font-weight:bold;">閉じる</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setMode('summary')" id="tabSummary">退院サマリー</button>
+    <button class="tab" onclick="setMode('shoki')" id="tabShoki">症状詳記</button>
+    <button class="tab" onclick="setMode('letter')" id="tabLetter">紹介状</button>
+    <button class="tab" onclick="setMode('consult')" id="tabConsult">コンサルト</button>
+  </div>
+
+  <div class="card">
+    
+    <div id="consultFields" class="field-grid">
+      <div>
+        <span class="field-label">宛先診療科</span>
+        <input type="text" id="targetDept" class="input-field" placeholder="例: 循環器内科">
+      </div>
+      <div>
+        <span class="field-label">依頼目的</span>
+        <input type="text" id="consultPurpose" class="input-field" placeholder="例: 冠動脈精査">
+      </div>
+    </div>
+
+    <div id="sourceFields" class="field-grid" style="margin-top:0;">
+      <div>
+        <span class="field-label">紹介元(自科) ※保存</span>
+        <input type="text" id="sourceDept" class="input-field" placeholder="例: 救急科" onchange="saveProfile()">
+      </div>
+      <div>
+        <span class="field-label">紹介者(自分) ※保存</span>
+        <input type="text" id="referrerName" class="input-field" placeholder="例: 救急太郎" onchange="saveProfile()">
+      </div>
+    </div>
+    
+    <hr style="width:100%; border:0; border-top:1px dashed #ddd; margin:12px 0;">
+
+    <div class="label-row">
+       <div class="btn-camera" onclick="document.getElementById('cameraInput').click()">
+         <span>📷 経過/画像 (複数可)</span>
+       </div>
+       <button class="btn-clear-imgs" onclick="clearImages()">全削除</button>
+    </div>
+    <input type="file" id="cameraInput" accept="image/*" multiple onchange="handleImageSelect(this)">
+
+    <div class="image-grid" id="imageGrid"></div>
+
+    <div class="hint" id="modeHint"></div>
+    <textarea id="inputText"></textarea>
+
+    <button class="btn-main btn-generate" id="generateBtn" onclick="generateDoc()">
+      <span>✨ 生成開始</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="label-row">
+      <label>iNote貼付用</label>
+      <span style="font-size:10px; color:#999;" id="statusText"></span>
+    </div>
+    <textarea id="outputText" readonly placeholder="ここに生成結果が出ます"></textarea>
+    
+    <button class="btn-main btn-continue" id="continueBtn" onclick="generateContinue()">
+      🔄 続きを書く
+    </button>
+    <button class="btn-main btn-copy" onclick="copyToClipboard()">
+      📋 コピー (iNoteへ)
+    </button>
+  </div>
+  
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">
+    Med-Doc Gen v4.3 - Consult & Profile Memory
+  </div>
+
+</div>
+
+<script>
+  /* --- Global State --- */
+  let currentMode = 'summary';
+  let apiKey = localStorage.getItem('med_gen_api_key_v3') || '';
+  let currentModel = localStorage.getItem('med_gen_model') || 'gemini-2.5-pro'; 
+  let currentImages = [];
+  let lastContentsParts = null;
+
+  /* --- プロンプト定義 --- */
+  const FORMAT_RULES = `
+【出力形式の厳守事項】
+1. 電子カルテ(iNote)貼付用。Markdown記法は禁止。
+2. 見出しは【 】（隅付き括弧）で囲む。
+3. 文体は専門医として適切に。
+`;
+
+  /* --- 初期化 --- */
+  window.onload = () => {
+    // API Key
+    document.getElementById('apiKeyInput').value = apiKey;
+    
+    // Model Selection
+    const select = document.getElementById('modelSelect');
+    if (![...select.options].some(o => o.value === currentModel)) {
+       select.value = 'custom';
+       document.getElementById('customModelInput').style.display = 'block';
+       document.getElementById('customModelInput').value = currentModel;
+    } else {
+       select.value = currentModel;
+    }
+    updateBadge();
+
+    // Profile Loading (自科・氏名の復元)
+    document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
+    document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
+
+    // Initial Mode
+    if (!apiKey) {
+      document.getElementById('settingsOverlay').style.display = 'block';
+      document.getElementById('settingsArea').style.display = 'block';
+    }
+    setMode('summary');
+  };
+
+  /* --- ユーザー情報保存 --- */
+  function saveProfile() {
+    const dept = document.getElementById('sourceDept').value;
+    const name = document.getElementById('referrerName').value;
+    localStorage.setItem('med_doc_source_dept', dept);
+    localStorage.setItem('med_doc_referrer_name', name);
+  }
+
+  /* --- 画像処理 --- */
+  async function handleImageSelect(input) {
+    if (input.files && input.files.length > 0) {
+      const files = Array.from(input.files);
+      for (let file of files) await processAndAddImage(file);
+      input.value = ''; 
+    }
+  }
+  function processAndAddImage(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          const max = 1500;
+          if (w > h && w > max) { h *= max/w; w = max; }
+          else if (h > max) { w *= max/h; h = max; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          currentImages.push(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
+          renderImageGrid();
+          resolve();
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function renderImageGrid() {
+    const grid = document.getElementById('imageGrid');
+    grid.innerHTML = '';
+    currentImages.forEach((imgBase64, index) => {
+      const container = document.createElement('div');
+      container.className = 'thumb-container';
+      const img = document.createElement('img');
+      img.src = 'data:image/jpeg;base64,' + imgBase64;
+      img.className = 'thumb-img';
+      const btn = document.createElement('button');
+      btn.className = 'btn-remove-thumb';
+      btn.innerHTML = '×';
+      btn.onclick = () => { currentImages.splice(index, 1); renderImageGrid(); };
+      container.appendChild(img);
+      container.appendChild(btn);
+      grid.appendChild(container);
+    });
+  }
+  function clearImages() { currentImages = []; renderImageGrid(); }
+
+  /* --- 生成ロジック --- */
+  async function generateDoc() {
+    if (!apiKey) { alert('設定からAPIキーを入力してください'); toggleSettings(); return; }
+    
+    // 入力情報の取得
+    const freeText = document.getElementById('inputText').value.trim();
+    
+    // 固定枠情報の取得
+    const targetDept = document.getElementById('targetDept').value.trim() || '〇〇科';
+    const purpose = document.getElementById('consultPurpose').value.trim() || '精査加療';
+    const sourceDept = document.getElementById('sourceDept').value.trim() || '当科';
+    const myName = document.getElementById('referrerName').value.trim() || '担当医';
+
+    if (!freeText && currentImages.length === 0) { alert('テキストか画像を入力してください'); return; }
+
+    const btn = document.getElementById('generateBtn');
+    const out = document.getElementById('outputText');
+    const status = document.getElementById('statusText');
+    const continueBtn = document.getElementById('continueBtn');
+    
+    btn.disabled = true; btn.textContent = '思考中...';
+    continueBtn.style.display = 'none';
+    status.textContent = `${currentModel} で執筆中...`;
+    out.value = '';
+
+    try {
+      // モード別のプロンプト構築（固定枠の値を埋め込む）
+      let systemPrompt = "";
+      
+      if (currentMode === 'consult') {
+        systemPrompt = `あなたはコンサルト依頼側の医師です。以下の条件で対診依頼を作成してください。
+${FORMAT_RULES}
+【固定パラメータ】
+・宛先: ${targetDept}
+・依頼元: ${sourceDept} ${myName}医師
+・目的: ${purpose}
+
+【構成】
+${targetDept} 御侍史
+お疲れ様です。${sourceDept}の${myName}です。
+以下の患者の${purpose}をお願いいたします。
+
+【依頼目的】
+${purpose}
+
+【経過・所見】
+(入力された画像/テキストから要約)
+
+よろしくお願いいたします。`;
+
+      } else if (currentMode === 'letter') {
+        systemPrompt = `あなたは紹介元の医師です。紹介状を作成してください。
+${FORMAT_RULES}
+【固定パラメータ】
+・紹介元: ${sourceDept} ${myName}医師
+
+【構成】
+[日付] [相手先医療機関] 御机下
+[自院名] ${sourceDept} ${myName} 印
+
+(定型挨拶)
+【紹介目的】
+【経過】
+(入力情報から時系列記述)
+(結び)`;
+      } else {
+        // Summary, Shoki (既存ロジック)
+        systemPrompt = getBasePrompt(currentMode);
+      }
+
+      const contentsParts = [];
+      if (currentImages.length > 0) {
+        currentImages.forEach(d => contentsParts.push({ inline_data: { mime_type: "image/jpeg", data: d } }));
+        contentsParts.push({ text: `画像(カルテ)と以下のメモを統合して作成せよ:\n${freeText}` });
+      } else {
+        contentsParts.push({ text: freeText });
+      }
+
+      lastContentsParts = contentsParts;
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+      const payload = {
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: contentsParts }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+      const data = await res.json();
+      const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (result) {
+        out.value = result;
+        status.textContent = '完了';
+        continueBtn.style.display = 'flex';
+      } else { throw new Error('結果が空でした'); }
+
+    } catch (e) { alert(`エラー: ${e.message}`); status.textContent = 'エラー'; } 
+    finally { btn.disabled = false; btn.textContent = '✨ 生成開始'; }
+  }
+
+  /* --- 続き生成 --- */
+  async function generateContinue() {
+    if (!lastContentsParts) return;
+    const btn = document.getElementById('continueBtn');
+    const out = document.getElementById('outputText');
+    btn.disabled = true; btn.textContent = '続き...';
+    try {
+      // 継続時は現在のモードのプロンプトを再利用したいが、簡易的にベースを使用
+      // (厳密にはコンテキスト維持されるのでInstruction再送は冗長だが念のため)
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [
+            { role: 'user', parts: lastContentsParts },
+            { role: 'model', parts: [{ text: out.value }] },
+            { role: 'user', parts: [{ text: "続きを書いて完成させてください。" }] }
+        ],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+      };
+      const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      const added = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (added) out.value += added;
+    } catch(e) { alert('失敗: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '🔄 続きを書く'; }
+  }
+
+  /* --- UI Helpers --- */
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if(mode === 'summary') document.getElementById('tabSummary').classList.add('active');
+    if(mode === 'shoki') document.getElementById('tabShoki').classList.add('active');
+    if(mode === 'letter') document.getElementById('tabLetter').classList.add('active');
+    if(mode === 'consult') document.getElementById('tabConsult').classList.add('active');
+    
+    // フィールドの表示制御
+    const consultFields = document.getElementById('consultFields');
+    const sourceFields = document.getElementById('sourceFields');
+    
+    if (mode === 'consult') {
+        consultFields.style.display = 'grid'; // 宛先・目的
+        sourceFields.style.display = 'grid';  // 自分
+        document.getElementById('inputText').placeholder = "補足メモ: 画像のここを見てほしい、など";
+    } else if (mode === 'letter') {
+        consultFields.style.display = 'none';
+        sourceFields.style.display = 'grid';  // 自分情報は紹介状でも使う
+        document.getElementById('inputText').placeholder = "宛先医療機関名、これまでの経過など";
+    } else {
+        consultFields.style.display = 'none';
+        sourceFields.style.display = 'none';  // サマリー・詳記では不要
+        document.getElementById('inputText').placeholder = "補足メモ (例: バイタル不安定、●●手技の必要性を強調して)";
+    }
+  }
+
+  function getBasePrompt(mode) {
+    if (mode === 'summary') {
+        return `あなたは指導医です。J-OSLER/JHIM準拠の退院サマリーを作成してください。${FORMAT_RULES}【構成】入院病名,入院後経過(プロブレム別評価・治療・反応),転帰,退院方針。ハルシネーション厳禁。`;
+    }
+    if (mode === 'shoki') {
+        return `あなたは保険医です。救命救急入院料や高額処置の医学的必要性を主張する症状詳記を作成してください。${FORMAT_RULES}【構成】傷病名,臨床経過(重症度指標GCS/SpO2等を含む),医学的根拠,結論。`;
+    }
+    return "";
+  }
+
+  function toggleSettings() {
+    const overlay = document.getElementById('settingsOverlay');
+    const area = document.getElementById('settingsArea');
+    const isShow = area.style.display === 'block';
+    overlay.style.display = isShow ? 'none' : 'block';
+    area.style.display = isShow ? 'none' : 'block';
+  }
+  
+  function saveApiKey() {
+    const val = document.getElementById('apiKeyInput').value.trim();
+    if(val) { localStorage.setItem('med_gen_api_key_v3', val); apiKey = val; }
+  }
+
+  function changeModel() {
+    const select = document.getElementById('modelSelect');
+    const customInput = document.getElementById('customModelInput');
+    if (select.value === 'custom') {
+        customInput.style.display = 'block';
+        currentModel = customInput.value.trim() || 'gemini-2.5-pro';
+    } else {
+        customInput.style.display = 'none';
+        currentModel = select.value;
+    }
+    localStorage.setItem('med_gen_model', currentModel);
+    updateBadge();
+  }
+  document.getElementById('customModelInput').addEventListener('change', function() {
+      currentModel = this.value.trim(); localStorage.setItem('med_gen_model', currentModel); updateBadge();
+  });
+  function updateBadge() {
+    let name = currentModel.replace('gemini-', '').replace('flash', '⚡Flash').replace('pro', 'Pro');
+    if(name.length > 10) name = 'Custom';
+    document.getElementById('modelBadge').textContent = name;
+  }
+  function copyToClipboard() {
+    const el = document.getElementById("outputText");
+    if(!el.value) return;
+    el.select(); el.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(el.value).then(() => alert("コピーしました")).catch(e => alert("コピー失敗"));
+  }
+</script>
+<script>
+  // PWA Service Worker Registration
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('SW registered!', reg))
+        .catch(err => console.log('SW failed', err));
+    });
+  }
+</script>
+</body>
+</html>
