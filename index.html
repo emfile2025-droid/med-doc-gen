@@ -3,16 +3,15 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<meta name="description" content="AI Medical Document Generator v4.3">
+<meta name="description" content="AI Medical Document Generator v4.8">
 <meta name="theme-color" content="#005088">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Med-Doc">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<link rel="manifest" href="manifest.json">
 
-<title>Med-Doc Gen v4.3 (Consult Master)</title>
+<title>Med-Doc Gen v4.8 (Natural Flow)</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -23,6 +22,9 @@
     --surface: #ffffff;
     --text: #1a1a1a;
     --border: #ced4da;
+    --success: #27ae60;
+    --warning: #f39c12;
+    --danger: #e74c3c;
     --sa-top: env(safe-area-inset-top, 20px);
     --sa-bottom: env(safe-area-inset-bottom, 20px);
   }
@@ -40,6 +42,23 @@
     width: 100%; max-width: 600px; margin: 0 auto; padding: 0 16px;
     display: flex; flex-direction: column; gap: 16px;
   }
+
+  /* --- トースト通知 --- */
+  #toastContainer {
+    position: fixed; top: calc(var(--sa-top) + 16px); left: 50%; transform: translateX(-50%);
+    z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .toast {
+    padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; color: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); pointer-events: auto; max-width: 90vw; text-align: center;
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+  }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+  .toast.warning { background: var(--warning); }
+  .toast.info { background: var(--primary); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
 
   /* --- ヘッダー --- */
   header { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
@@ -79,8 +98,8 @@
   .label-row { display: flex; justify-content: space-between; align-items: center; }
   label { font-weight: 700; font-size: 13px; color: #555; display: flex; align-items: center; gap: 6px; }
 
-  /* --- 固定入力枠 (Consult/Letter用) --- */
-  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; display: none; /* デフォルト非表示 */ }
+  /* --- 固定入力枠 --- */
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; display: none; }
   .field-full { grid-column: 1 / -1; }
   .input-field {
     width: 100%; padding: 10px; border: 1px solid #bbb; border-radius: 8px;
@@ -126,15 +145,22 @@
   }
   .btn-main:active { opacity: 0.8; }
   .btn-generate { background: var(--primary); color: #fff; }
-  .btn-generate:disabled { background: #95a5a6; }
+  .btn-generate:disabled { background: #95a5a6; cursor: not-allowed; }
   .btn-clear-imgs { font-size:12px; color:#c0392b; background:none; border:none; text-decoration:underline; cursor:pointer; }
   .btn-continue { background: #f39c12; color: #fff; margin-top: 10px; display: none; }
   .btn-copy { background: #27ae60; color: #fff; margin-top: 10px; }
-  .hint { font-size: 12px; color: #666; background: #eef2f5; padding: 8px 12px; border-radius: 6px; line-height: 1.4; }
+  
+  .hint { font-size: 12px; color: #555; background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 100%); padding: 10px 14px; border-radius: 8px; line-height: 1.5; border-left: 3px solid var(--primary); }
+  .hint strong { color: var(--primary); }
+  
+  .spinner { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   #cameraInput { display: none; }
 </style>
 </head>
 <body>
+
+<div id="toastContainer"></div>
 
 <div class="container">
   
@@ -176,66 +202,42 @@
   <div class="card">
     
     <div id="consultFields" class="field-grid">
-      <div>
-        <span class="field-label">宛先診療科</span>
-        <input type="text" id="targetDept" class="input-field" placeholder="例: 循環器内科">
-      </div>
-      <div>
-        <span class="field-label">依頼目的</span>
-        <input type="text" id="consultPurpose" class="input-field" placeholder="例: 冠動脈精査">
-      </div>
+      <div><span class="field-label">宛先診療科</span><input type="text" id="targetDept" class="input-field" placeholder="例: 循環器内科"></div>
+      <div><span class="field-label">依頼目的</span><input type="text" id="consultPurpose" class="input-field" placeholder="例: 冠動脈精査"></div>
     </div>
-
+    <div id="letterFields" class="field-grid">
+      <div class="field-full"><span class="field-label">宛先医療機関</span><input type="text" id="targetHospital" class="input-field" placeholder="例: ○○クリニック / △△病院 □□科"></div>
+    </div>
     <div id="sourceFields" class="field-grid" style="margin-top:0;">
-      <div>
-        <span class="field-label">紹介元(自科) ※保存</span>
-        <input type="text" id="sourceDept" class="input-field" placeholder="例: 救急科" onchange="saveProfile()">
-      </div>
-      <div>
-        <span class="field-label">紹介者(自分) ※保存</span>
-        <input type="text" id="referrerName" class="input-field" placeholder="例: 救急太郎" onchange="saveProfile()">
-      </div>
+      <div><span class="field-label">紹介元(自科) ※保存</span><input type="text" id="sourceDept" class="input-field" placeholder="例: 救急科" onchange="saveProfile()"></div>
+      <div><span class="field-label">紹介者(自分) ※保存</span><input type="text" id="referrerName" class="input-field" placeholder="例: 救急太郎" onchange="saveProfile()"></div>
     </div>
     
     <hr style="width:100%; border:0; border-top:1px dashed #ddd; margin:12px 0;">
 
     <div class="label-row">
-       <div class="btn-camera" onclick="document.getElementById('cameraInput').click()">
-         <span>📷 経過/画像 (複数可)</span>
-       </div>
+       <div class="btn-camera" onclick="document.getElementById('cameraInput').click()"><span>📷 経過/画像 (複数可)</span></div>
        <button class="btn-clear-imgs" onclick="clearImages()">全削除</button>
     </div>
     <input type="file" id="cameraInput" accept="image/*" multiple onchange="handleImageSelect(this)">
-
     <div class="image-grid" id="imageGrid"></div>
 
     <div class="hint" id="modeHint"></div>
     <textarea id="inputText"></textarea>
 
     <button class="btn-main btn-generate" id="generateBtn" onclick="generateDoc()">
-      <span>✨ 生成開始</span>
+      <span id="btnContent">✨ 生成開始</span>
     </button>
   </div>
 
   <div class="card">
-    <div class="label-row">
-      <label>iNote貼付用</label>
-      <span style="font-size:10px; color:#999;" id="statusText"></span>
-    </div>
+    <div class="label-row"><label>iNote貼付用</label><span style="font-size:10px; color:#999;" id="statusText"></span></div>
     <textarea id="outputText" readonly placeholder="ここに生成結果が出ます"></textarea>
-    
-    <button class="btn-main btn-continue" id="continueBtn" onclick="generateContinue()">
-      🔄 続きを書く
-    </button>
-    <button class="btn-main btn-copy" onclick="copyToClipboard()">
-      📋 コピー (iNoteへ)
-    </button>
+    <button class="btn-main btn-continue" id="continueBtn" onclick="generateContinue()">🔄 続きを書く</button>
+    <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">
-    Med-Doc Gen v4.3 - Consult & Profile Memory
-  </div>
-
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v4.8 - Natural Flow</div>
 </div>
 
 <script>
@@ -246,35 +248,65 @@
   let currentImages = [];
   let lastContentsParts = null;
 
-  /* --- プロンプト定義 --- */
+  /* --- 定数・プロンプト --- */
   const FORMAT_RULES = `
 【出力形式の厳守事項】
 1. 電子カルテ(iNote)貼付用。Markdown記法は禁止。
 2. 見出しは【 】（隅付き括弧）で囲む。
-3. 文体は専門医として適切に。
+3. 文体は専門医として適切に（である調など）。
+4. 機種依存文字や変換不能な特殊記号は使用せず、半角英数記号で代用すること。
 `;
+
+  const ANTI_HALLUCINATION_RULES = `
+【ハルシネーション(捏造)防止と自然な記述】
+医療文書において虚偽記載は厳禁ですが、「不明」等の記述は編集の手間になるため、以下のルールで「判明している事実のみ」で自然な文章を構成してください。
+
+1. 数値・詳細が不明な場合の対応:
+   - 用量・投与量が不明な場合 → 薬剤名・行為のみを記載し、「(用量不明)」とは書かない。
+     (良例: 「ノルアドレナリン持続静注を開始した」 / 悪例: 「ノルアドレナリン (用量不明) を開始した」)
+   - 総輸液量が不明な場合 → 輸液製剤名のみ記載する。「(総量不明)」とは書かない。
+   - 検査値が不明な場合 → その項目自体を省略する。
+   - 日付・時刻が不明な場合 → 「○月○日」等と無理に書かず、前後関係で記述する。
+
+2. 推測と事実の区別:
+   - 入力情報から明確に読み取れる内容 → そのまま記載
+   - 情報がない内容 → 無理に埋めず、その項目自体を省略するか、抽象的な表現にとどめる。
+   - 絶対に「不明」「詳細不明」などの単語を生成文中に含めないこと（編集の手間を省くため）。
+`;
+
+  const MODE_HINTS = {
+    summary: {
+      hint: '<strong>退院サマリー</strong>: 指定の13項目を網羅。詳細不明な点は自然に省略し、編集不要な完成稿を目指します。',
+      placeholder: '補足メモ (例: 入院時所見の詳細、退院時の特別な指示など)'
+    },
+    shoki: {
+      hint: '<strong>症状詳記</strong>: 救命入院料・高額処置の医学的必要性を主張。判明している指標で論理構成します。',
+      placeholder: '補足メモ (例: ICU管理の必要性を強調、AIS算定根拠)'
+    },
+    letter: {
+      hint: '<strong>紹介状</strong>: 宛先医療機関を入力し、経過をまとめた紹介状を作成。逆紹介・転院時に。',
+      placeholder: '経過や紹介理由 (例: 当院での加療終了、術後フォローお願いしたい)'
+    },
+    consult: {
+      hint: '<strong>コンサルト</strong>: 院内他科への対診依頼文を作成。宛先・目的を明確に入力すると精度UP。',
+      placeholder: '補足メモ (例: 画像のここを見てほしい、緊急度高い)'
+    }
+  };
 
   /* --- 初期化 --- */
   window.onload = () => {
-    // API Key
     document.getElementById('apiKeyInput').value = apiKey;
-    
-    // Model Selection
     const select = document.getElementById('modelSelect');
     if (![...select.options].some(o => o.value === currentModel)) {
        select.value = 'custom';
        document.getElementById('customModelInput').style.display = 'block';
        document.getElementById('customModelInput').value = currentModel;
-    } else {
-       select.value = currentModel;
-    }
+    } else { select.value = currentModel; }
     updateBadge();
 
-    // Profile Loading (自科・氏名の復元)
     document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
     document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
 
-    // Initial Mode
     if (!apiKey) {
       document.getElementById('settingsOverlay').style.display = 'block';
       document.getElementById('settingsArea').style.display = 'block';
@@ -282,20 +314,69 @@
     setMode('summary');
   };
 
-  /* --- ユーザー情報保存 --- */
-  function saveProfile() {
-    const dept = document.getElementById('sourceDept').value;
-    const name = document.getElementById('referrerName').value;
-    localStorage.setItem('med_doc_source_dept', dept);
-    localStorage.setItem('med_doc_referrer_name', name);
+  /* --- プロンプト生成ロジック --- */
+  function getBasePrompt(mode) {
+    if (mode === 'summary') {
+      return `あなたは指導医です。以下の【必須構成】に従い、漏れなく詳細な退院時サマリーを作成してください。
+${FORMAT_RULES}
+${ANTI_HALLUCINATION_RULES}
+
+【記載スタイルの厳守事項】
+1. 薬剤記載: 「一般名(商品名) 1回量 投与経路 投与間隔/速度」が基本だが、用量不明時は「薬剤名 投与経路」のみ記載。
+   - 例: 「アセトアミノフェン div」 (※「(不明)」は書かない)
+2. 輸液・輸血: 総量が判明していれば記載。不明なら製剤名と実施の事実のみ記載。
+3. 単位・記号: 特殊文字や全角記号は禁止。すべて半角英数で記載。
+4. 検査値: 「項目名 値」の形式。値が不明な項目は記載しない。
+
+【必須構成】
+【主訴】
+【現病歴】
+【既往歴】
+【常用薬】
+【アレルギー】
+【生活歴】
+【入院時身体所見】
+【入院時検査所見】
+【鑑別診断】
+【プロブレムリスト】
+【入院後経過と治療】
+(プロブレムごとに記述。判明している情報だけで自然な文章にすること)
+【退院時状態】
+【退院後方針】
+
+※入力情報に記載がない項目は「記載なし」とし、「不明」等の注釈は入れないこと。`;
+    }
+    if (mode === 'shoki') {
+      return `あなたは保険医です。救命救急入院料や高額処置の医学的必要性を主張する症状詳記を作成してください。
+${FORMAT_RULES}
+${ANTI_HALLUCINATION_RULES}
+
+【構成】
+【傷病名】
+【臨床経過】(重症度指標 GCS/SpO2/血圧等を含む。不明な数値は触れず、判明している所見で構成する)
+【医学的根拠】(なぜその処置・入院料が必要だったか)
+【結論】`;
+    }
+    return "";
   }
 
-  /* --- 画像処理 --- */
+  /* --- 共通処理 --- */
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+  function saveProfile() {
+    localStorage.setItem('med_doc_source_dept', document.getElementById('sourceDept').value);
+    localStorage.setItem('med_doc_referrer_name', document.getElementById('referrerName').value);
+  }
   async function handleImageSelect(input) {
     if (input.files && input.files.length > 0) {
-      const files = Array.from(input.files);
-      for (let file of files) await processAndAddImage(file);
-      input.value = ''; 
+      for (let file of Array.from(input.files)) await processAndAddImage(file);
+      input.value = ''; showToast('画像を追加しました', 'success');
     }
   }
   function processAndAddImage(file) {
@@ -305,132 +386,128 @@
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          const max = 1500;
-          if (w > h && w > max) { h *= max/w; w = max; }
-          else if (h > max) { w *= max/h; h = max; }
+          let w = img.width, h = img.height, max = 1500;
+          if (w > h && w > max) { h *= max/w; w = max; } else if (h > max) { w *= max/h; h = max; }
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
           currentImages.push(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
-          renderImageGrid();
-          resolve();
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+          renderImageGrid(); resolve();
+        }; img.src = e.target.result;
+      }; reader.readAsDataURL(file);
     });
   }
   function renderImageGrid() {
-    const grid = document.getElementById('imageGrid');
-    grid.innerHTML = '';
-    currentImages.forEach((imgBase64, index) => {
-      const container = document.createElement('div');
-      container.className = 'thumb-container';
-      const img = document.createElement('img');
-      img.src = 'data:image/jpeg;base64,' + imgBase64;
-      img.className = 'thumb-img';
-      const btn = document.createElement('button');
-      btn.className = 'btn-remove-thumb';
-      btn.innerHTML = '×';
-      btn.onclick = () => { currentImages.splice(index, 1); renderImageGrid(); };
-      container.appendChild(img);
-      container.appendChild(btn);
-      grid.appendChild(container);
+    const grid = document.getElementById('imageGrid'); grid.innerHTML = '';
+    currentImages.forEach((b64, i) => {
+      const div = document.createElement('div'); div.className = 'thumb-container';
+      div.innerHTML = `<img src="data:image/jpeg;base64,${b64}" class="thumb-img"><button class="btn-remove-thumb" onclick="removeImg(${i})">×</button>`;
+      grid.appendChild(div);
     });
   }
-  function clearImages() { currentImages = []; renderImageGrid(); }
+  window.removeImg = (i) => { currentImages.splice(i, 1); renderImageGrid(); };
+  function clearImages() { if(currentImages.length){ currentImages=[]; renderImageGrid(); showToast('画像を削除しました','warning'); } }
 
-  /* --- 生成ロジック --- */
   async function generateDoc() {
-    if (!apiKey) { alert('設定からAPIキーを入力してください'); toggleSettings(); return; }
-    
-    // 入力情報の取得
+    if (!apiKey) { showToast('APIキーを設定してください', 'error'); toggleSettings(); return; }
     const freeText = document.getElementById('inputText').value.trim();
-    
-    // 固定枠情報の取得
-    const targetDept = document.getElementById('targetDept').value.trim() || '〇〇科';
-    const purpose = document.getElementById('consultPurpose').value.trim() || '精査加療';
-    const sourceDept = document.getElementById('sourceDept').value.trim() || '当科';
-    const myName = document.getElementById('referrerName').value.trim() || '担当医';
-
-    if (!freeText && currentImages.length === 0) { alert('テキストか画像を入力してください'); return; }
+    if (!freeText && currentImages.length === 0) { showToast('テキストか画像を入力してください', 'warning'); return; }
 
     const btn = document.getElementById('generateBtn');
     const out = document.getElementById('outputText');
     const status = document.getElementById('statusText');
     const continueBtn = document.getElementById('continueBtn');
-    
-    btn.disabled = true; btn.textContent = '思考中...';
+
+    btn.disabled = true; btn.querySelector('#btnContent').innerHTML = '<div class="spinner"></div><span>思考中...</span>';
     continueBtn.style.display = 'none';
     status.textContent = `${currentModel} で執筆中...`;
     out.value = '';
 
     try {
-      // モード別のプロンプト構築（固定枠の値を埋め込む）
+      // Prompt Construction
       let systemPrompt = "";
-      
       if (currentMode === 'consult') {
-        systemPrompt = `あなたはコンサルト依頼側の医師です。以下の条件で対診依頼を作成してください。
+        const tD = document.getElementById('targetDept').value || '〇〇科';
+        const p = document.getElementById('consultPurpose').value || '精査加療';
+        const sD = document.getElementById('sourceDept').value || '当科';
+        const mN = document.getElementById('referrerName').value || '担当医';
+        systemPrompt = `あなたはコンサルト依頼側の医師です。
 ${FORMAT_RULES}
-【固定パラメータ】
-・宛先: ${targetDept}
-・依頼元: ${sourceDept} ${myName}医師
-・目的: ${purpose}
+${ANTI_HALLUCINATION_RULES}
+
+【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}, 目的:${p}
 
 【構成】
-${targetDept} 御侍史
-お疲れ様です。${sourceDept}の${myName}です。
-以下の患者の${purpose}をお願いいたします。
+${tD} 御侍史
+お疲れ様です。${sD}の${mN}です。
+以下の患者の${p}をお願いいたします。
 
 【依頼目的】
-${purpose}
+${p}
 
 【経過・所見】
-(入力された画像/テキストから要約)
+(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること)
 
 よろしくお願いいたします。`;
-
       } else if (currentMode === 'letter') {
+        const tH = document.getElementById('targetHospital').value || '〇〇医療機関';
+        const sD = document.getElementById('sourceDept').value || '当科';
+        const mN = document.getElementById('referrerName').value || '担当医';
         systemPrompt = `あなたは紹介元の医師です。紹介状を作成してください。
 ${FORMAT_RULES}
-【固定パラメータ】
-・紹介元: ${sourceDept} ${myName}医師
+${ANTI_HALLUCINATION_RULES}
+
+【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}
 
 【構成】
-[日付] [相手先医療機関] 御机下
-[自院名] ${sourceDept} ${myName} 印
+[日付]
+${tH} 御机下
 
-(定型挨拶)
+拝啓 時下益々ご清祥のこととお慶び申し上げます。
+平素より大変お世話になっております。
+
 【紹介目的】
+
 【経過】
-(入力情報から時系列記述)
-(結び)`;
+(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること)
+
+ご高診の程、何卒よろしくお願い申し上げます。
+
+敬具
+
+[自院名]
+${sD} ${mN}`;
       } else {
-        // Summary, Shoki (既存ロジック)
         systemPrompt = getBasePrompt(currentMode);
       }
 
+      // 入力内容に応じたcontentsParts構築
       const contentsParts = [];
-      if (currentImages.length > 0) {
+      const hasImages = currentImages.length > 0;
+      const hasText = freeText.length > 0;
+
+      if (hasImages) {
         currentImages.forEach(d => contentsParts.push({ inline_data: { mime_type: "image/jpeg", data: d } }));
-        contentsParts.push({ text: `画像(カルテ)と以下のメモを統合して作成せよ:\n${freeText}` });
+      }
+
+      const instruction = "詳細が読み取れない情報は捏造せず、また「不明」とも書かずに、判明している情報だけで自然な文章にすること。編集の手間を省くため、不明な箇所の注釈は不要。";
+
+      if (hasImages && hasText) {
+        contentsParts.push({ text: `以下の画像(カルテ等)とメモを統合して作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
+      } else if (hasImages) {
+        contentsParts.push({ text: `以下の画像(カルテ等)を解析して作成せよ。${instruction}` });
       } else {
-        contentsParts.push({ text: freeText });
+        contentsParts.push({ text: `以下のメモを元に作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
       }
 
       lastContentsParts = contentsParts;
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-      const payload = {
+      const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts: contentsParts }],
         generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-      };
+      })});
 
-      const res = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
       if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
       const data = await res.json();
       const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -439,125 +516,79 @@ ${FORMAT_RULES}
         out.value = result;
         status.textContent = '完了';
         continueBtn.style.display = 'flex';
+        out.scrollTop = out.scrollHeight;
+        showToast('生成完了！', 'success');
       } else { throw new Error('結果が空でした'); }
 
-    } catch (e) { alert(`エラー: ${e.message}`); status.textContent = 'エラー'; } 
-    finally { btn.disabled = false; btn.textContent = '✨ 生成開始'; }
+    } catch (e) { showToast(`エラー: ${e.message}`, 'error'); status.textContent = 'エラー'; } 
+    finally { btn.disabled = false; btn.querySelector('#btnContent').textContent = '✨ 生成開始'; }
   }
 
-  /* --- 続き生成 --- */
   async function generateContinue() {
     if (!lastContentsParts) return;
     const btn = document.getElementById('continueBtn');
     const out = document.getElementById('outputText');
-    btn.disabled = true; btn.textContent = '続き...';
+    const orgHTML = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<div class="spinner"></div><span>続き...</span>';
     try {
-      // 継続時は現在のモードのプロンプトを再利用したいが、簡易的にベースを使用
-      // (厳密にはコンテキスト維持されるのでInstruction再送は冗長だが念のため)
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-      const payload = {
+      const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
         contents: [
             { role: 'user', parts: lastContentsParts },
             { role: 'model', parts: [{ text: out.value }] },
-            { role: 'user', parts: [{ text: "続きを書いて完成させてください。" }] }
+            { role: 'user', parts: [{ text: "続きを書いて完成させてください。引き続き、不明な点は自然に省略し、「不明」とは書かないこと。" }] }
         ],
         generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-      };
-      const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      })});
       const data = await res.json();
       const added = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (added) out.value += added;
-    } catch(e) { alert('失敗: ' + e.message); }
-    finally { btn.disabled = false; btn.textContent = '🔄 続きを書く'; }
+      if (added) { out.value += added; out.scrollTop = out.scrollHeight; showToast('続きを追加しました', 'success'); }
+    } catch(e) { showToast('失敗: ' + e.message, 'error'); } 
+    finally { btn.disabled = false; btn.innerHTML = orgHTML; }
   }
 
-  /* --- UI Helpers --- */
   function setMode(mode) {
     currentMode = mode;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    if(mode === 'summary') document.getElementById('tabSummary').classList.add('active');
-    if(mode === 'shoki') document.getElementById('tabShoki').classList.add('active');
-    if(mode === 'letter') document.getElementById('tabLetter').classList.add('active');
-    if(mode === 'consult') document.getElementById('tabConsult').classList.add('active');
+    document.getElementById('tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
     
-    // フィールドの表示制御
-    const consultFields = document.getElementById('consultFields');
-    const sourceFields = document.getElementById('sourceFields');
-    
-    if (mode === 'consult') {
-        consultFields.style.display = 'grid'; // 宛先・目的
-        sourceFields.style.display = 'grid';  // 自分
-        document.getElementById('inputText').placeholder = "補足メモ: 画像のここを見てほしい、など";
-    } else if (mode === 'letter') {
-        consultFields.style.display = 'none';
-        sourceFields.style.display = 'grid';  // 自分情報は紹介状でも使う
-        document.getElementById('inputText').placeholder = "宛先医療機関名、これまでの経過など";
-    } else {
-        consultFields.style.display = 'none';
-        sourceFields.style.display = 'none';  // サマリー・詳記では不要
-        document.getElementById('inputText').placeholder = "補足メモ (例: バイタル不安定、●●手技の必要性を強調して)";
-    }
-  }
+    document.getElementById('consultFields').style.display = (mode === 'consult') ? 'grid' : 'none';
+    document.getElementById('letterFields').style.display = (mode === 'letter') ? 'grid' : 'none';
+    document.getElementById('sourceFields').style.display = (mode === 'consult' || mode === 'letter') ? 'grid' : 'none';
 
-  function getBasePrompt(mode) {
-    if (mode === 'summary') {
-        return `あなたは指導医です。J-OSLER/JHIM準拠の退院サマリーを作成してください。${FORMAT_RULES}【構成】入院病名,入院後経過(プロブレム別評価・治療・反応),転帰,退院方針。ハルシネーション厳禁。`;
-    }
-    if (mode === 'shoki') {
-        return `あなたは保険医です。救命救急入院料や高額処置の医学的必要性を主張する症状詳記を作成してください。${FORMAT_RULES}【構成】傷病名,臨床経過(重症度指標GCS/SpO2等を含む),医学的根拠,結論。`;
-    }
-    return "";
-  }
-
-  function toggleSettings() {
-    const overlay = document.getElementById('settingsOverlay');
-    const area = document.getElementById('settingsArea');
-    const isShow = area.style.display === 'block';
-    overlay.style.display = isShow ? 'none' : 'block';
-    area.style.display = isShow ? 'none' : 'block';
+    document.getElementById('modeHint').innerHTML = MODE_HINTS[mode].hint;
+    document.getElementById('inputText').placeholder = MODE_HINTS[mode].placeholder;
   }
   
+  function toggleSettings() {
+    const s = document.getElementById('settingsArea').style;
+    const o = document.getElementById('settingsOverlay').style;
+    const isShow = s.display === 'block';
+    s.display = o.display = isShow ? 'none' : 'block';
+  }
   function saveApiKey() {
-    const val = document.getElementById('apiKeyInput').value.trim();
-    if(val) { localStorage.setItem('med_gen_api_key_v3', val); apiKey = val; }
+    const v = document.getElementById('apiKeyInput').value.trim();
+    if(v) { localStorage.setItem('med_gen_api_key_v3', v); apiKey = v; showToast('APIキー保存完了', 'success'); }
   }
-
   function changeModel() {
-    const select = document.getElementById('modelSelect');
-    const customInput = document.getElementById('customModelInput');
-    if (select.value === 'custom') {
-        customInput.style.display = 'block';
-        currentModel = customInput.value.trim() || 'gemini-2.5-pro';
-    } else {
-        customInput.style.display = 'none';
-        currentModel = select.value;
-    }
-    localStorage.setItem('med_gen_model', currentModel);
-    updateBadge();
+    const s = document.getElementById('modelSelect');
+    const c = document.getElementById('customModelInput');
+    if(s.value==='custom'){ c.style.display='block'; currentModel=c.value.trim()||'gemini-2.5-pro'; }
+    else { c.style.display='none'; currentModel=s.value; }
+    localStorage.setItem('med_gen_model', currentModel); updateBadge();
   }
-  document.getElementById('customModelInput').addEventListener('change', function() {
-      currentModel = this.value.trim(); localStorage.setItem('med_gen_model', currentModel); updateBadge();
+  document.getElementById('customModelInput').addEventListener('change', function(){
+    currentModel=this.value.trim(); localStorage.setItem('med_gen_model', currentModel); updateBadge();
   });
   function updateBadge() {
-    let name = currentModel.replace('gemini-', '').replace('flash', '⚡Flash').replace('pro', 'Pro');
-    if(name.length > 10) name = 'Custom';
-    document.getElementById('modelBadge').textContent = name;
+    let n = currentModel.replace('gemini-', '').replace('flash', '⚡Flash').replace('pro', 'Pro');
+    if(n.length>10) n='Custom'; document.getElementById('modelBadge').textContent = n;
   }
   function copyToClipboard() {
     const el = document.getElementById("outputText");
-    if(!el.value) return;
+    if(!el.value) { showToast('コピーする内容がありません', 'warning'); return; }
     el.select(); el.setSelectionRange(0, 99999);
-    navigator.clipboard.writeText(el.value).then(() => alert("コピーしました")).catch(e => alert("コピー失敗"));
-  }
-</script>
-<script>
-  // PWA Service Worker Registration
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
-        .then(reg => console.log('SW registered!', reg))
-        .catch(err => console.log('SW failed', err));
-    });
+    navigator.clipboard.writeText(el.value).then(()=>showToast('コピーしました','success')).catch(()=>showToast('失敗','error'));
   }
 </script>
 </body>
