@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<meta name="description" content="AI Medical Document Generator v4.10">
+<meta name="description" content="AI Medical Document Generator v4.11">
 <meta name="theme-color" content="#005088">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v4.10 (Polite Closing)</title>
+<title>Med-Doc Gen v4.11 (Bug Fixed)</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -99,7 +99,8 @@
   label { font-weight: 700; font-size: 13px; color: #555; display: flex; align-items: center; gap: 6px; }
 
   /* --- 固定入力枠 --- */
-  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; display: none; }
+  /* display: none がデフォルト。JavaScriptで display: grid に切り替える */
+  .field-grid { display: none; grid-template-columns: 1fr 1fr; gap: 10px; }
   .field-full { grid-column: 1 / -1; }
   .input-field {
     width: 100%; padding: 10px; border: 1px solid #bbb; border-radius: 8px;
@@ -237,7 +238,7 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v4.10 - Polite Closing</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v4.11 - Bug Fixed</div>
 </div>
 
 <script>
@@ -266,21 +267,55 @@
 
   const RECEIPT_RULES = `
 【レセプト審査対策（症状詳記）の鉄則】
-審査員（医師）による査定（減点）を防ぐため、以下のルールを遵守すること。
+審査員（医師）による査定（減点）を防ぐため、以下のルールを厳守すること。審査員は多種多様な専門の医師で、1枚当たり数秒〜数分程度で審査する。
 
-1. **NGワード禁止と置換**:
-   - 禁止: 「患者の希望により」「当院のプロトコルにより」「論文を参考に」「〜と考えられる」
-   - 推奨: 「〜ガイドラインに従って」「実際に遵守した」「医学的に必要であったため」
-   - 文体: 長文・名文は不要。要点のみを箇条書きまたは短文で明瞭に記載。
+1. **一般的注意事項**:
+   - 長文・名文は禁止。要点のみを明瞭・明確に箇条書きで記載。
+   - Keyとなる数値（変化）は必ず記載する。
+   - 横文字・略号は可能な限り避け、日本語の専門用語を使用する。
+   - 適切な日本語がない場合、初回の記載はフルスペルと略号を併記する（例: 低体温療法(TTM)）。
 
-2. **必須記載事項（該当する場合必ず記載）**:
-   - **敗血症**: 必ず「原因」と「SOFAスコア(≧2)」を記載。ショック時は「乳酸値(Lac)」と「カテコラミン投与」も必須。
-   - **輸血**: 必ず「血液製剤の使用指針に従い、〜を目標に適正な輸血を実施した」と記述。輸血前後の検査値（Hb, PLT, 凝固）を記載。
-   - **救急管理(ICU)**: 漫然と管理したのではなく、「人工呼吸管理が必要」「循環不安定でカテコラミンが必要」「術後厳重管理が必要」など理由を具体的に。
-   - **手術・処置**: 高額処置（TTM, CHDF, VAC等）は適応病名と実施理由、期間（日数・回数）を明確に。
+2. **NGワード禁止と置換**:
+   - 禁止: 「患者の希望により」「当施設のプロトコルにより」「〜論文を参考に」「〜と考えられる」
+   - 推奨: 「日本国内の学会から発表されている〜ガイドラインに従って」「実際に遵守した（しようと努めた）」「医学的に必要であったため」
 
-3. **数値の扱い**:
+3. **救命救急管理の必要性（該当する場合必ず記載）**:
+   - 来院時の状態（緊急度・重症度が高い、侵襲的治療の必要性など）を記載。
+   - ICU/救急病棟管理がその期間必要だった理由を具体的に記載:
+     * 人工呼吸管理継続が必要
+     * 抜管後の呼吸状態が不安定で厳重な経過観察が必要
+     * 循環動態が不安定で大量輸液・輸血・カテコラミンが必要
+     * 蘇生後や頭部外傷後で中枢神経管理（TTMを含む）が必要
+   - **敗血症**: 原因となった病名とSOFAスコア(≥2)を必ず記載。
+   - **敗血症性ショック**: 乳酸値(Lac≥2mmol/L)とカテコラミン投与を必ず記載。
+
+4. **手術の必要性（該当する場合必ず記載）**:
+   - その手術を要した理由を必ず記載。
+   - 血管内治療などデバイスを多く使用する手術や、日頃よりも多くの医療材料を要した手術などについては、必要性を明確にするために手術記録を転記する。
+
+5. **輸血の必要性（該当する場合必ず記載）**:
+   - 血液製剤の使用指針を参照し、病態に合わせたHb, PLT, 凝固系の目標値を明記。
+   - 輸血前後の検査値を必ず記載。
+   - 周術期や通常診療における輸血: 「血液製剤の使用指針の推奨に従い、〜を目標に適正な輸血を実施した（試みた）。」
+   - 比較的多量の輸血を行った場合: 上記に加え「急速に低下しており、出血の予想される術中においても目標値が維持されるように」などの文言を追加。
+   - 大量出血時: 「大量出血症例に対する血液製剤の適正使用のガイドラインの推奨に従い、大量輸血プロトコルを実施した（試みた）。」
+
+6. **処置の必要性（該当する場合必ず記載）**:
+   - その処置を要した理由を必ず記載。適応、日数および枚数制限に注意。
+   - **低体温療法(TTM)**: 心肺蘇生後のTTM、35℃以下、最大3日間算定。サーモガードシステム/ICYカテーテル、ブランケットを使用。
+   - **経皮的体温調節療法**: 急性重症脳障害（SAH, 頭部外傷, 熱中症）のTTM、1回のみ算定。サーモガードシステム/ICYカテーテルを使用。
+   - **局所陰圧閉鎖処置(VAC, ベラフロ, ABTHERA等)**: 
+     * 据え置き型（VACやベラフロ）は最大4週間、連日算定可。
+     * ABTHERAは最大10日間、5枚の交換まで算定可。
+     * ABTHERAとVACを併せて算定は不可。
+     * 算定限度を超えて使用した場合は、必要性を切実に記載。
+   - **持続緩徐式血液濾過(CHDF)**: 
+     * 適応: 末期腎不全、急性腎障害（高度代謝性アシドーシス、尿毒症、電解質異常、体液過剰状態）、薬物中毒、重症敗血症、激症肝炎又は術後肝不全を呈する急性肝不全、重症急性膵炎（急性膵炎診療ガイドライン2015に基づく）
+     * 慢性維持透析(HD)と併せて月14回まで（重症急性膵炎は月8回まで、敗血症性ショックは月8回まで、急性肝不全は月10回3ヶ月まで）
+
+7. **数値の扱い**:
    - 重症度を示す数値（GCS, SpO2, BP, Lac, SOFA等）は判明している限り必ず記載する。
+   - 数値の変化（改善・悪化）も可能な限り記載する。
 `;
 
   const MODE_HINTS = {
@@ -289,8 +324,8 @@
       placeholder: '補足メモ (例: 入院時所見の詳細、退院時の特別な指示など)'
     },
     shoki: {
-      hint: '<strong>症状詳記 (レセプト対策)</strong>: 「患者希望」等は禁止。「ガイドライン準拠」とし、丁寧な依頼文で結びます。',
-      placeholder: '補足メモ (例: 敗血症の原因、輸血前後のデータ、ICU入室の具体的理由)'
+      hint: '<strong>症状詳記 (レセプト対策)</strong>: 4項目構成（臨床症状、診察・検査所見、治療の必要性、治療の経過）。「患者希望」等は禁止。',
+      placeholder: '補足メモ (例: 敗血症の原因、輸血前後のデータ、ICU入室の具体的理由、手術の適応)'
     },
     letter: {
       hint: '<strong>紹介状</strong>: 宛先医療機関を入力し、経過をまとめた紹介状を作成。逆紹介・転院時に。',
@@ -315,6 +350,13 @@
 
     document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
     document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
+
+    // customModelInputのイベントリスナーを設定
+    document.getElementById('customModelInput').addEventListener('change', function(){
+      currentModel = this.value.trim() || 'gemini-2.5-pro';
+      localStorage.setItem('med_gen_model', currentModel);
+      updateBadge();
+    });
 
     if (!apiKey) {
       document.getElementById('settingsOverlay').style.display = 'block';
@@ -360,17 +402,22 @@ ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 ${RECEIPT_RULES}
 
-【構成】
-【傷病名】
-【臨床経過】
-(時系列で記述。重症度指標 GCS/SpO2/血圧/SOFA等 を含む)
-(※輸血がある場合は必ず「血液製剤の使用指針に従い」の定型文と目標値を入れる)
+【必須構成（この順序で必ず記載すること）】
 
-【医学的根拠】
-(なぜその処置・ICU管理・入院料が必要だったか。ガイドラインや重症度を根拠に記述)
+【患者の主たる疾患（合併症を含む。）の診断根拠となった臨床症状】
+(主訴、現病歴、時系列での症状の経過を記述。重症度指標 GCS/SpO2/血圧/SOFA等を含む。判明している情報のみで自然な文章にすること)
 
-【結論】
-(「上記理由により高額な算定となりましたが、医学的に必要不可欠な治療でありました。ご審査のほど何卒よろしくお願い申し上げます。」という定型文で結ぶこと)`;
+【患者の主たる疾患（合併症を含む。）の診断根拠となった臨床症状の診察・検査所見】
+(身体所見、検査所見（血液検査、画像検査等）、診断に至った根拠を記述。数値が不明な項目は記載しない)
+
+【主な治療行為（手術、処置、薬物治療等）の必要性】
+(なぜその処置・ICU管理・入院料・手術・薬物治療が必要だったか。ガイドラインや重症度を根拠に記述。NGワード「患者の希望により」等は使用禁止)
+(※輸血がある場合は必ず「血液製剤の使用指針に従い、〜を目標に適正な輸血を実施した」の定型文と目標値を入れる)
+
+【主な治療行為（手術、処置、薬物治療等）の経過】
+(実施した治療の経過を時系列で記述。手術・処置の内容、薬物治療の効果、経過観察の結果等。判明している情報のみで自然な文章にすること)
+
+※各項目は明確に区別し、重複なく記述すること。`;
     }
     return "";
   }
@@ -390,25 +437,63 @@ ${RECEIPT_RULES}
   }
   async function handleImageSelect(input) {
     if (input.files && input.files.length > 0) {
-      for (let file of Array.from(input.files)) await processAndAddImage(file);
-      input.value = ''; showToast('画像を追加しました', 'success');
+      let successCount = 0;
+      let failCount = 0;
+      for (let file of Array.from(input.files)) {
+        try {
+          await processAndAddImage(file);
+          successCount++;
+        } catch (e) {
+          failCount++;
+          console.error('画像処理エラー:', e);
+        }
+      }
+      input.value = '';
+      if (failCount > 0) {
+        showToast(`${successCount}枚追加、${failCount}枚失敗`, failCount === input.files.length ? 'error' : 'warning');
+      } else {
+        showToast(`${successCount}枚の画像を追加しました`, 'success');
+      }
     }
   }
   function processAndAddImage(file) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('画像ファイルではありません'));
+        return;
+      }
       const reader = new FileReader();
+      reader.onerror = () => reject(new Error('ファイル読み込みに失敗しました'));
       reader.onload = (e) => {
         const img = new Image();
+        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
         img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height, max = 1500;
-          if (w > h && w > max) { h *= max/w; w = max; } else if (h > max) { w *= max/h; h = max; }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          currentImages.push(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
-          renderImageGrid(); resolve();
-        }; img.src = e.target.result;
-      }; reader.readAsDataURL(file);
+          try {
+            const canvas = document.createElement('canvas');
+            let w = img.width, h = img.height, max = 1500;
+            if (w > h && w > max) { h *= max/w; w = max; } else if (h > max) { w *= max/h; h = max; }
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Canvasの初期化に失敗しました'));
+              return;
+            }
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            if (!dataUrl || dataUrl.length < 100) {
+              reject(new Error('画像の変換に失敗しました'));
+              return;
+            }
+            currentImages.push(dataUrl.split(',')[1]);
+            renderImageGrid();
+            resolve();
+          } catch (err) {
+            reject(new Error('画像処理中にエラーが発生しました: ' + err.message));
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
     });
   }
   function renderImageGrid() {
@@ -432,7 +517,13 @@ ${RECEIPT_RULES}
     const status = document.getElementById('statusText');
     const continueBtn = document.getElementById('continueBtn');
 
-    btn.disabled = true; btn.querySelector('#btnContent').innerHTML = '<div class="spinner"></div><span>思考中...</span>';
+    btn.disabled = true;
+    const btnContent = btn.querySelector('#btnContent');
+    if (btnContent) {
+      btnContent.innerHTML = '<div class="spinner"></div><span>思考中...</span>';
+    } else {
+      btn.innerHTML = '<div class="spinner"></div><span>思考中...</span>';
+    }
     continueBtn.style.display = 'none';
     status.textContent = `${currentModel} で執筆中...`;
     out.value = '';
@@ -523,7 +614,10 @@ ${sD} ${mN}`;
         generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
       })});
 
-      if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || res.statusText);
+      }
       const data = await res.json();
       const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
       
@@ -535,19 +629,96 @@ ${sD} ${mN}`;
         showToast('生成完了！', 'success');
       } else { throw new Error('結果が空でした'); }
 
-    } catch (e) { showToast(`エラー: ${e.message}`, 'error'); status.textContent = 'エラー'; } 
-    finally { btn.disabled = false; btn.querySelector('#btnContent').textContent = '✨ 生成開始'; }
+    } catch (e) { 
+      showToast(`エラー: ${e.message}`, 'error'); 
+      status.textContent = 'エラー';
+      // エラー時はlastContentsPartsを更新しない（前回の状態を保持）
+    } 
+    finally { 
+      btn.disabled = false;
+      const btnContent = btn.querySelector('#btnContent');
+      if (btnContent) {
+        btnContent.textContent = '✨ 生成開始';
+      } else {
+        btn.innerHTML = '<span id="btnContent">✨ 生成開始</span>';
+      }
+    }
   }
 
   async function generateContinue() {
-    if (!lastContentsParts) return;
+    if (!lastContentsParts || lastContentsParts.length === 0) {
+      showToast('続きを生成するには、先に文書を生成してください', 'warning');
+      return;
+    }
     const btn = document.getElementById('continueBtn');
     const out = document.getElementById('outputText');
+    if (!out.value || out.value.trim().length === 0) {
+      showToast('続きを生成するには、先に文書を生成してください', 'warning');
+      return;
+    }
     const orgHTML = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<div class="spinner"></div><span>続き...</span>';
     try {
+      // 現在のモードに応じたsystemPromptを取得
+      let systemPrompt = "";
+      if (currentMode === 'consult') {
+        const tD = document.getElementById('targetDept').value || '〇〇科';
+        const p = document.getElementById('consultPurpose').value || '精査加療';
+        const sD = document.getElementById('sourceDept').value || '当科';
+        const mN = document.getElementById('referrerName').value || '担当医';
+        systemPrompt = `あなたはコンサルト依頼側の医師です。
+${FORMAT_RULES}
+${ANTI_HALLUCINATION_RULES}
+
+【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}, 目的:${p}
+
+【構成】
+${tD} 御侍史
+お疲れ様です。${sD}の${mN}です。
+以下の患者の${p}をお願いいたします。
+
+【依頼目的】
+${p}
+
+【経過・所見】
+(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること)
+
+よろしくお願いいたします。`;
+      } else if (currentMode === 'letter') {
+        const tH = document.getElementById('targetHospital').value || '〇〇医療機関';
+        const sD = document.getElementById('sourceDept').value || '当科';
+        const mN = document.getElementById('referrerName').value || '担当医';
+        systemPrompt = `あなたは紹介元の医師です。紹介状を作成してください。
+${FORMAT_RULES}
+${ANTI_HALLUCINATION_RULES}
+
+【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}
+
+【構成】
+[日付]
+${tH} 御机下
+
+拝啓 時下益々ご清祥のこととお慶び申し上げます。
+平素より大変お世話になっております。
+
+【紹介目的】
+
+【経過】
+(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること)
+
+ご高診の程、何卒よろしくお願い申し上げます。
+
+敬具
+
+[自院名]
+${sD} ${mN}`;
+      } else {
+        systemPrompt = getBasePrompt(currentMode);
+      }
+
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [
             { role: 'user', parts: lastContentsParts },
             { role: 'model', parts: [{ text: out.value }] },
@@ -555,15 +726,35 @@ ${sD} ${mN}`;
         ],
         generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
       })});
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || res.statusText);
+      }
+      
       const data = await res.json();
       const added = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (added) { out.value += added; out.scrollTop = out.scrollHeight; showToast('続きを追加しました', 'success'); }
-    } catch(e) { showToast('失敗: ' + e.message, 'error'); } 
+      if (added) { 
+        out.value += added; 
+        out.scrollTop = out.scrollHeight; 
+        showToast('続きを追加しました', 'success'); 
+      } else {
+        throw new Error('続きの生成に失敗しました');
+      }
+    } catch(e) { 
+      showToast('失敗: ' + e.message, 'error'); 
+    } 
     finally { btn.disabled = false; btn.innerHTML = orgHTML; }
   }
 
   function setMode(mode) {
     currentMode = mode;
+    // モード切り替え時に前回の生成状態をリセット
+    lastContentsParts = null;
+    document.getElementById('continueBtn').style.display = 'none';
+    document.getElementById('outputText').value = '';
+    document.getElementById('statusText').textContent = '';
+    
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById('tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
     
@@ -588,22 +779,52 @@ ${sD} ${mN}`;
   function changeModel() {
     const s = document.getElementById('modelSelect');
     const c = document.getElementById('customModelInput');
-    if(s.value==='custom'){ c.style.display='block'; currentModel=c.value.trim()||'gemini-2.5-pro'; }
-    else { c.style.display='none'; currentModel=s.value; }
-    localStorage.setItem('med_gen_model', currentModel); updateBadge();
+    if(s.value==='custom'){ 
+      c.style.display='block'; 
+      currentModel=c.value.trim()||'gemini-2.5-pro'; 
+    } else { 
+      c.style.display='none'; 
+      currentModel=s.value; 
+    }
+    localStorage.setItem('med_gen_model', currentModel); 
+    updateBadge();
   }
-  document.getElementById('customModelInput').addEventListener('change', function(){
-    currentModel=this.value.trim(); localStorage.setItem('med_gen_model', currentModel); updateBadge();
-  });
   function updateBadge() {
     let n = currentModel.replace('gemini-', '').replace('flash', '⚡Flash').replace('pro', 'Pro');
     if(n.length>10) n='Custom'; document.getElementById('modelBadge').textContent = n;
   }
   function copyToClipboard() {
     const el = document.getElementById("outputText");
-    if(!el.value) { showToast('コピーする内容がありません', 'warning'); return; }
-    el.select(); el.setSelectionRange(0, 99999);
-    navigator.clipboard.writeText(el.value).then(()=>showToast('コピーしました','success')).catch(()=>showToast('失敗','error'));
+    if(!el.value || el.value.trim().length === 0) { 
+      showToast('コピーする内容がありません', 'warning'); 
+      return; 
+    }
+    // Clipboard APIを使用（readonly textareaでも動作）
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(el.value)
+        .then(() => showToast('コピーしました', 'success'))
+        .catch(() => {
+          // フォールバック: 古い方法を試す
+          try {
+            el.select();
+            el.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            showToast('コピーしました', 'success');
+          } catch (err) {
+            showToast('コピーに失敗しました', 'error');
+          }
+        });
+    } else {
+      // フォールバック: 古いブラウザ対応
+      try {
+        el.select();
+        el.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        showToast('コピーしました', 'success');
+      } catch (err) {
+        showToast('コピーに失敗しました', 'error');
+      }
+    }
   }
 </script>
 </body>
