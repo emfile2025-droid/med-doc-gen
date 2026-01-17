@@ -203,11 +203,26 @@
   <div class="card">
     
     <div id="consultFields" class="field-grid">
-      <div><span class="field-label">宛先診療科</span><input type="text" id="targetDept" class="input-field" placeholder="例: 循環器内科"></div>
-      <div><span class="field-label">依頼目的</span><input type="text" id="consultPurpose" class="input-field" placeholder="例: 冠動脈精査"></div>
+      <div><span class="field-label">宛先診療科</span><select id="targetDept" class="input-field">
+        <option value="">選択してください</option>
+      </select></div>
+      <div><span class="field-label">依頼目的</span><select id="consultPurpose" class="input-field">
+        <option value="">選択してください</option>
+        <option value="転科依頼">転科依頼</option>
+        <option value="併診依頼">併診依頼</option>
+        <option value="専門診察および御助言依頼">専門診察および御助言依頼</option>
+        <option value="#7000番紹介依頼">#7000番紹介依頼</option>
+      </select></div>
     </div>
     <div id="letterFields" class="field-grid">
       <div class="field-full"><span class="field-label">宛先医療機関</span><input type="text" id="targetHospital" class="input-field" placeholder="例: ○○クリニック / △△病院 □□科"></div>
+      <div class="field-full"><span class="field-label">紹介目的</span><select id="letterPurpose" class="input-field">
+        <option value="">選択してください</option>
+        <option value="転院">転院</option>
+        <option value="外来加療依頼">外来加療依頼</option>
+        <option value="入院経過報告">入院経過報告</option>
+        <option value="その他">その他</option>
+      </select></div>
     </div>
     <div id="sourceFields" class="field-grid" style="margin-top:0;">
       <div><span class="field-label">紹介元(自科) ※保存</span><input type="text" id="sourceDept" class="input-field" placeholder="例: 救急科" onchange="saveProfile()"></div>
@@ -248,6 +263,18 @@
   let currentModel = localStorage.getItem('med_gen_model') || 'gemini-2.5-pro'; 
   let currentImages = [];
   let lastContentsParts = null;
+
+  /* --- モデル名の正規化（API用） --- */
+  function normalizeModelName(modelName) {
+    // Gemini 3系のモデル名はそのまま使用（APIで正式なモデル名）
+    // gemini-3-proはgemini-3-proのまま、gemini-3.0-proはgemini-3-proに変換
+    const modelMap = {
+      'gemini-3.0-pro': 'gemini-3-pro',  // v1ではgemini-3-proが正しい
+      'gemini-3.0-flash': 'gemini-3-flash',
+      'gemini-3': 'gemini-3-pro'
+    };
+    return modelMap[modelName] || modelName;
+  }
 
   /* --- 定数・プロンプト --- */
   const FORMAT_RULES = `
@@ -337,6 +364,38 @@
     }
   };
 
+  /* --- 診療科リスト --- */
+  const DEPARTMENT_LIST = [
+    '内科',
+    '小児科',
+    '糖尿病・内分泌内科',
+    '血液・膠原病内科',
+    '腎臓内科',
+    '脳神経内科',
+    '消化器内科',
+    '循環器内科',
+    '呼吸器内科',
+    '新生児内科',
+    '腫瘍内科',
+    '放射線科',
+    '麻酔科',
+    'リウマチ科',
+    '消化器外科',
+    '呼吸器外科',
+    '心臓血管外科',
+    '乳腺外科',
+    '小児外科',
+    '整形外科',
+    '形成外科',
+    '脳神経外科',
+    '皮膚科',
+    '泌尿器科',
+    '産婦人科',
+    '耳鼻咽喉科',
+    '眼科',
+    '歯科・歯科口腔外科'
+  ];
+
   /* --- 初期化 --- */
   window.onload = () => {
     document.getElementById('apiKeyInput').value = apiKey;
@@ -350,6 +409,15 @@
 
     document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
     document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
+
+    // 診療科リストを設定
+    const targetDeptSelect = document.getElementById('targetDept');
+    DEPARTMENT_LIST.forEach(dept => {
+      const option = document.createElement('option');
+      option.value = dept;
+      option.textContent = dept;
+      targetDeptSelect.appendChild(option);
+    });
 
     // customModelInputのイベントリスナーを設定
     document.getElementById('customModelInput').addEventListener('change', function(){
@@ -533,36 +601,53 @@ ${RECEIPT_RULES}
       let systemPrompt = "";
       if (currentMode === 'consult') {
         const tD = document.getElementById('targetDept').value || '〇〇科';
-        const p = document.getElementById('consultPurpose').value || '精査加療';
+        const p = document.getElementById('consultPurpose').value || '';
         const sD = document.getElementById('sourceDept').value || '当科';
         const mN = document.getElementById('referrerName').value || '担当医';
-        systemPrompt = `あなたはコンサルト依頼側の医師です。
+        
+        // 依頼目的に応じたプロンプト設定
+        let purposeDescription = '';
+        if (p === '転科依頼') {
+          purposeDescription = `以下の患者を${tD}へ転科のご依頼をいたします。`;
+        } else if (p === '併診依頼') {
+          purposeDescription = '以下の患者の併診をお願いいたします。';
+        } else if (p === '専門診察および御助言依頼') {
+          purposeDescription = '以下の患者の専門診察および御助言をお願いいたします。';
+        } else if (p === '#7000番紹介依頼') {
+          purposeDescription = `他院からの紹介患者（#7000番）を${tD}にご紹介いたします。`;
+        } else {
+          purposeDescription = p ? `以下の患者の${p}をお願いいたします。` : '以下の患者のご診察をお願いいたします。';
+        }
+        
+        systemPrompt = `あなたはコンサルト依頼側の医師です。院内依頼とはいえ、各専門科への依頼なので、丁寧で礼儀正しい手紙形式で作成してください。「お疲れ様です」などのフランクな表現は避け、「お忙しい中、恐縮ですが」「いつもお世話になっております」などの丁寧な表現を使用してください。
 ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 
-【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}, 目的:${p}
+【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}${p ? `, 依頼目的:${p}` : ''}
 
 【構成】
 ${tD} 御侍史
-お疲れ様です。${sD}の${mN}です。
-以下の患者の${p}をお願いいたします。
+
+いつもお世話になっております。${sD}の${mN}です。
+お忙しい中、恐縮ですが、${purposeDescription}
 
 【依頼目的】
-${p}
+${p || '特に指定なし'}
 
 【経過・所見】
-(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること)
+(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること)
 
-よろしくお願いいたします。`;
+何卒よろしくお願い申し上げます。`;
       } else if (currentMode === 'letter') {
         const tH = document.getElementById('targetHospital').value || '〇〇医療機関';
+        const lP = document.getElementById('letterPurpose').value || '';
         const sD = document.getElementById('sourceDept').value || '当科';
         const mN = document.getElementById('referrerName').value || '担当医';
         systemPrompt = `あなたは紹介元の医師です。紹介状を作成してください。
 ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 
-【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}
+【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}${lP ? `, 紹介目的:${lP}` : ''}
 
 【構成】
 [日付]
@@ -572,9 +657,10 @@ ${tH} 御机下
 平素より大変お世話になっております。
 
 【紹介目的】
+${lP ? `${lP}のため、ご紹介申し上げます。` : 'ご紹介申し上げます。'}
 
 【経過】
-(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること)
+(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること。紹介目的（${lP || '特に指定なし'}）に合わせて適切な内容を記述すること)
 
 ご高診の程、何卒よろしくお願い申し上げます。
 
@@ -607,7 +693,13 @@ ${sD} ${mN}`;
 
       lastContentsParts = contentsParts;
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+      // モデル名を正規化し、APIバージョンを決定
+      const normalizedModel = normalizeModelName(currentModel);
+      // Gemini 3系はv1、それ以外はv1betaを使用
+      // gemini-3-pro, gemini-3-flashなどはv1エンドポイントが必要
+      const isGemini3 = normalizedModel === 'gemini-3-pro' || normalizedModel === 'gemini-3-flash' || normalizedModel.startsWith('gemini-3-');
+      const apiVersion = isGemini3 ? 'v1' : 'v1beta';
+      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${normalizedModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts: contentsParts }],
@@ -663,36 +755,53 @@ ${sD} ${mN}`;
       let systemPrompt = "";
       if (currentMode === 'consult') {
         const tD = document.getElementById('targetDept').value || '〇〇科';
-        const p = document.getElementById('consultPurpose').value || '精査加療';
+        const p = document.getElementById('consultPurpose').value || '';
         const sD = document.getElementById('sourceDept').value || '当科';
         const mN = document.getElementById('referrerName').value || '担当医';
-        systemPrompt = `あなたはコンサルト依頼側の医師です。
+        
+        // 依頼目的に応じたプロンプト設定
+        let purposeDescription = '';
+        if (p === '転科依頼') {
+          purposeDescription = `以下の患者を${tD}へ転科のご依頼をいたします。`;
+        } else if (p === '併診依頼') {
+          purposeDescription = '以下の患者の併診をお願いいたします。';
+        } else if (p === '専門診察および御助言依頼') {
+          purposeDescription = '以下の患者の専門診察および御助言をお願いいたします。';
+        } else if (p === '#7000番紹介依頼') {
+          purposeDescription = `他院からの紹介患者（#7000番）を${tD}にご紹介いたします。`;
+        } else {
+          purposeDescription = p ? `以下の患者の${p}をお願いいたします。` : '以下の患者のご診察をお願いいたします。';
+        }
+        
+        systemPrompt = `あなたはコンサルト依頼側の医師です。院内依頼とはいえ、各専門科への依頼なので、丁寧で礼儀正しい手紙形式で作成してください。「お疲れ様です」などのフランクな表現は避け、「お忙しい中、恐縮ですが」「いつもお世話になっております」などの丁寧な表現を使用してください。
 ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 
-【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}, 目的:${p}
+【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}${p ? `, 依頼目的:${p}` : ''}
 
 【構成】
 ${tD} 御侍史
-お疲れ様です。${sD}の${mN}です。
-以下の患者の${p}をお願いいたします。
+
+いつもお世話になっております。${sD}の${mN}です。
+お忙しい中、恐縮ですが、${purposeDescription}
 
 【依頼目的】
-${p}
+${p || '特に指定なし'}
 
 【経過・所見】
-(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること)
+(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること)
 
-よろしくお願いいたします。`;
+何卒よろしくお願い申し上げます。`;
       } else if (currentMode === 'letter') {
         const tH = document.getElementById('targetHospital').value || '〇〇医療機関';
+        const lP = document.getElementById('letterPurpose').value || '';
         const sD = document.getElementById('sourceDept').value || '当科';
         const mN = document.getElementById('referrerName').value || '担当医';
         systemPrompt = `あなたは紹介元の医師です。紹介状を作成してください。
 ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 
-【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}
+【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}${lP ? `, 紹介目的:${lP}` : ''}
 
 【構成】
 [日付]
@@ -702,9 +811,10 @@ ${tH} 御机下
 平素より大変お世話になっております。
 
 【紹介目的】
+${lP ? `${lP}のため、ご紹介申し上げます。` : 'ご紹介申し上げます。'}
 
 【経過】
-(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること)
+(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること。紹介目的（${lP || '特に指定なし'}）に合わせて適切な内容を記述すること)
 
 ご高診の程、何卒よろしくお願い申し上げます。
 
@@ -716,7 +826,13 @@ ${sD} ${mN}`;
         systemPrompt = getBasePrompt(currentMode);
       }
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+      // モデル名を正規化し、APIバージョンを決定
+      const normalizedModel = normalizeModelName(currentModel);
+      // Gemini 3系はv1、それ以外はv1betaを使用
+      // gemini-3-pro, gemini-3-flashなどはv1エンドポイントが必要
+      const isGemini3 = normalizedModel === 'gemini-3-pro' || normalizedModel === 'gemini-3-flash' || normalizedModel.startsWith('gemini-3-');
+      const apiVersion = isGemini3 ? 'v1' : 'v1beta';
+      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${normalizedModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [
