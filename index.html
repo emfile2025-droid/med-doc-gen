@@ -264,18 +264,6 @@
   let currentImages = [];
   let lastContentsParts = null;
 
-  /* --- モデル名の正規化（API用） --- */
-  function normalizeModelName(modelName) {
-    // Gemini 3系のモデル名はそのまま使用（APIで正式なモデル名）
-    // gemini-3-proはgemini-3-proのまま、gemini-3.0-proはgemini-3-proに変換
-    const modelMap = {
-      'gemini-3.0-pro': 'gemini-3-pro',  // v1ではgemini-3-proが正しい
-      'gemini-3.0-flash': 'gemini-3-flash',
-      'gemini-3': 'gemini-3-pro'
-    };
-    return modelMap[modelName] || modelName;
-  }
-
   /* --- 定数・プロンプト --- */
   const FORMAT_RULES = `
 【出力形式の厳守事項】
@@ -623,6 +611,8 @@ ${RECEIPT_RULES}
 ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 
+【重要】文体について：すべて「ですます調」で記述してください。「である」「だった」などのである調は使用せず、「です」「ます」「でした」などのですます調で統一してください。
+
 【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}${p ? `, 依頼目的:${p}` : ''}
 
 【構成】
@@ -635,7 +625,7 @@ ${tD} 御侍史
 ${p || '特に指定なし'}
 
 【経過・所見】
-(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること)
+(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること。必ずですます調で記述すること)
 
 何卒よろしくお願い申し上げます。`;
       } else if (currentMode === 'letter') {
@@ -693,13 +683,7 @@ ${sD} ${mN}`;
 
       lastContentsParts = contentsParts;
 
-      // モデル名を正規化し、APIバージョンを決定
-      const normalizedModel = normalizeModelName(currentModel);
-      // Gemini 3系はv1、それ以外はv1betaを使用
-      // gemini-3-pro, gemini-3-flashなどはv1エンドポイントが必要
-      const isGemini3 = normalizedModel === 'gemini-3-pro' || normalizedModel === 'gemini-3-flash' || normalizedModel.startsWith('gemini-3-');
-      const apiVersion = isGemini3 ? 'v1' : 'v1beta';
-      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${normalizedModel}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts: contentsParts }],
@@ -777,6 +761,8 @@ ${sD} ${mN}`;
 ${FORMAT_RULES}
 ${ANTI_HALLUCINATION_RULES}
 
+【重要】文体について：すべて「ですます調」で記述してください。「である」「だった」などのである調は使用せず、「です」「ます」「でした」などのですます調で統一してください。
+
 【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}${p ? `, 依頼目的:${p}` : ''}
 
 【構成】
@@ -789,7 +775,7 @@ ${tD} 御侍史
 ${p || '特に指定なし'}
 
 【経過・所見】
-(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること)
+(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること。必ずですます調で記述すること)
 
 何卒よろしくお願い申し上げます。`;
       } else if (currentMode === 'letter') {
@@ -826,13 +812,7 @@ ${sD} ${mN}`;
         systemPrompt = getBasePrompt(currentMode);
       }
 
-      // モデル名を正規化し、APIバージョンを決定
-      const normalizedModel = normalizeModelName(currentModel);
-      // Gemini 3系はv1、それ以外はv1betaを使用
-      // gemini-3-pro, gemini-3-flashなどはv1エンドポイントが必要
-      const isGemini3 = normalizedModel === 'gemini-3-pro' || normalizedModel === 'gemini-3-flash' || normalizedModel.startsWith('gemini-3-');
-      const apiVersion = isGemini3 ? 'v1' : 'v1beta';
-      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${normalizedModel}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [
