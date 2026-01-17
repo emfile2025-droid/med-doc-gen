@@ -182,8 +182,10 @@
     <div class="setting-group">
       <div class="setting-label">使用AIモデル</div>
       <select id="modelSelect" class="setting-input" onchange="changeModel()">
-        <option value="gemini-2.5-pro">Gemini 2.5 Pro (★推奨)</option>
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash (高速)</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (約¥8/回) ★推奨</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (約¥2/回) 高速</option>
+        <option value="gemini-3-pro-preview">Gemini 3 Pro (約¥11/回)</option>
+        <option value="gemini-3-flash-preview">Gemini 3 Flash (約¥3/回)</option>
         <option value="custom">カスタム...</option>
       </select>
       <input type="text" id="customModelInput" class="setting-input" style="display:none; margin-top:6px;" placeholder="gemini-experimental">
@@ -263,6 +265,41 @@
   let currentModel = localStorage.getItem('med_gen_model') || 'gemini-2.5-pro'; 
   let currentImages = [];
   let lastContentsParts = null;
+
+  /* --- 費用計算（2500字の日本語を処理した場合） --- */
+  // 日本語2500字をトークン数に換算（1文字≈1.5トークン、システムプロンプト・画像を含めて概算）
+  // 入力: 約5000トークン、出力: 約5000トークン（2500字の回答と仮定）として計算
+  function getModelCostEstimate(modelName) {
+    const INPUT_TOKENS = 5000;  // 2500字 + システムプロンプト + 画像などの概算
+    const OUTPUT_TOKENS = 5000; // 2500字の回答と仮定
+    const TOKENS_PER_MILLION = 1000000;
+    
+    // 1ドル = 150円で換算
+    const USD_TO_JPY = 150;
+    
+    let inputCost = 0;
+    let outputCost = 0;
+    
+    if (modelName === 'gemini-3-pro-preview') {
+      // プロンプト <= 200,000 トークンの場合
+      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 2.00;
+      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 12.00;
+    } else if (modelName === 'gemini-3-flash-preview') {
+      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 0.50;
+      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 3.00;
+    } else if (modelName === 'gemini-2.5-pro') {
+      // プロンプト <= 200,000 トークンの場合
+      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 1.25;
+      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 10.00;
+    } else if (modelName === 'gemini-2.5-flash') {
+      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 0.30;
+      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 2.50;
+    }
+    
+    const totalCostUSD = inputCost + outputCost;
+    const totalCostJPY = Math.round(totalCostUSD * USD_TO_JPY);
+    return totalCostJPY;
+  }
 
   /* --- 定数・プロンプト --- */
   const FORMAT_RULES = `
