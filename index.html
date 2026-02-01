@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<meta name="description" content="AI Medical Document Generator v4.11">
+<meta name="description" content="AI Medical Document Generator v4.12">
 <meta name="theme-color" content="#005088">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v4.11 (Bug Fixed)</title>
+<title>Med-Doc Gen v4.12</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -81,7 +81,7 @@
   select.setting-input { background-color: #fff; }
 
   /* --- タブ --- */
-  .tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; background: #e9ecef; padding: 6px; border-radius: 12px; }
+  .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: #e9ecef; padding: 6px; border-radius: 12px; }
   .tab {
     padding: 10px; font-size: 13px; font-weight: 700; 
     border-radius: 8px; border: none; background: transparent; 
@@ -199,6 +199,7 @@
   <div class="tabs">
     <button class="tab active" onclick="setMode('summary')" id="tabSummary">退院サマリー</button>
     <button class="tab" onclick="setMode('shoki')" id="tabShoki">症状詳記</button>
+    <button class="tab" onclick="setMode('summary-shoki')" id="tabSummaryShoki">サマリー＆詳記</button>
     <button class="tab" onclick="setMode('letter')" id="tabLetter">紹介状</button>
     <button class="tab" onclick="setMode('consult')" id="tabConsult">コンサルト</button>
   </div>
@@ -256,7 +257,7 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v4.11 - Bug Fixed</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v4.12</div>
 </div>
 
 <script>
@@ -320,13 +321,16 @@
 
   const RECEIPT_RULES = `
 【レセプト審査対策（症状詳記）の鉄則】
-審査員（医師）による査定（減点）を防ぐため、以下のルールを厳守すること。審査員は多種多様な専門の医師で、1枚当たり数秒〜数分程度で審査する。
+症状詳記が必要な項目は、DPC包括部分（入院基本料、投薬、注射、検査、病理診断、画像診断、1000点未満の処置）と出来高払い部分（医学管理、手術、麻酔、放射線治療、リハビリ、1000点以上の処置）に分かれています。
+
+審査員（医師）による査定（減点）を防ぐため、以下のルールを厳守すること。審査員は医師ですが、専門は多種多様です。どのような背景の審査員に当たるかは分かりません。1枚当たりにかける時間は、簡単なレセプトは数秒、高額レセプトでも数十秒から数分程度です。審査員には医師の裁量権があります。
 
 1. **一般的注意事項**:
    - 長文・名文は禁止。要点のみを明瞭・明確に箇条書きで記載。
    - Keyとなる数値（変化）は必ず記載する。
    - 横文字・略号は可能な限り避け、日本語の専門用語を使用する。
    - 適切な日本語がない場合、初回の記載はフルスペルと略号を併記する（例: 低体温療法(TTM)）。
+   - 医事課の依頼へ愚直に答える。症状詳記が必要な場合、簡潔かつ明瞭に記載すること。
 
 2. **NGワード禁止と置換**:
    - 禁止: 「患者の希望により」「当施設のプロトコルにより」「〜論文を参考に」「〜と考えられる」
@@ -344,14 +348,14 @@
 
 4. **手術の必要性（該当する場合必ず記載）**:
    - その手術を要した理由を必ず記載。
-   - 血管内治療などデバイスを多く使用する手術や、日頃よりも多くの医療材料を要した手術などについては、必要性を明確にするために手術記録を転記する。
+   - 手術記録の転記は必須でないが、血管内治療などデバイスを多く使用する手術や、日頃よりも多くの医療材料を要した手術などについては、必要性を明確にするために手術記録を転記しておく。
 
 5. **輸血の必要性（該当する場合必ず記載）**:
    - 血液製剤の使用指針を参照し、病態に合わせたHb, PLT, 凝固系の目標値を明記。
    - 輸血前後の検査値を必ず記載。
-   - 周術期や通常診療における輸血: 「血液製剤の使用指針の推奨に従い、〜を目標に適正な輸血を実施した（試みた）。」
-   - 比較的多量の輸血を行った場合: 上記に加え「急速に低下しており、出血の予想される術中においても目標値が維持されるように」などの文言を追加。
-   - 大量出血時: 「大量出血症例に対する血液製剤の適正使用のガイドラインの推奨に従い、大量輸血プロトコルを実施した（試みた）。」
+   - **周術期や通常診療における輸血**: 「血液製剤の使用指針の推奨に従い、〜を目標に適正な輸血を実施した（試みた）。」
+   - **比較的多量の輸血を行った場合**: 上記に加え「急速に低下しており、出血の予想される術中においても目標値が維持されるように」「中心静脈カテーテル挿入部より臨床的な出血傾向を認めており」などの文言を追加。
+   - **大量出血時**: 「大量出血症例に対する血液製剤の適正使用のガイドラインの推奨に従い、大量輸血プロトコルを実施した（試みた）。」
 
 6. **処置の必要性（該当する場合必ず記載）**:
    - その処置を要した理由を必ず記載。適応、日数および枚数制限に注意。
@@ -387,6 +391,10 @@
     consult: {
       hint: '<strong>コンサルト</strong>: 院内他科への対診依頼文を作成。宛先・目的を明確に入力すると精度UP。',
       placeholder: '補足メモ (例: 画像のここを見てほしい、緊急度高い)'
+    },
+    'summary-shoki': {
+      hint: '<strong>サマリー＆詳記</strong>: 退院サマリーと症状詳記を順番に生成します。同一の入力で両方を一括出力できます。',
+      placeholder: '補足メモ (例: 入院時所見の詳細、敗血症の原因、輸血前後のデータなど)'
     }
   };
 
@@ -484,6 +492,8 @@ ${ANTI_HALLUCINATION_RULES}
 【プロブレムリスト】
 【入院後経過と治療】
 (プロブレムごとに記述。判明している情報だけで自然な文章にすること)
+【時系列サマリー】
+(入院から退院までの主要な出来事を日付順にまとめて記載すること。手術、処置、検査、治療開始・変更、合併症の発症、転科、退院など、判明している日付とともに主要な出来事を時系列で記載。日付が不明な場合は入院日数（例：入院3日目）で記載。一目で経過が把握できるよう簡潔に箇条書きで記載すること)
 【退院時状態】
 【退院後方針】
 
@@ -502,16 +512,33 @@ ${RECEIPT_RULES}
 
 【患者の主たる疾患（合併症を含む。）の診断根拠となった臨床症状】
 (主訴、現病歴、時系列での症状の経過を記述。重症度指標 GCS/SpO2/血圧/SOFA等を含む。判明している情報のみで自然な文章にすること。必ずですます調で記述すること)
+【重要】数値と時系列の記載について：
+- 日付や入院日数を必ず記載（例：「○月○日」「入院○日目」など）
+- バイタルサイン（血圧、脈拍、体温、SpO2、呼吸数など）は具体的な数値と単位を必ず記載し、経時的変化を示す（例：「血圧120/80mmHgから90/60mmHgに低下」）
+- 重症度指標（GCS、SOFAスコアなど）は具体的な数値を必ず記載
+- 数値の推移を示す際は、前後の値を比較して記載すること
 
 【患者の主たる疾患（合併症を含む。）の診断根拠となった臨床症状の診察・検査所見】
 (身体所見、検査所見（血液検査、画像検査等）、診断に至った根拠を記述。数値が不明な項目は記載しない。必ずですます調で記述すること)
+【重要】検査値の記載について：
+- 血液検査値は具体的な数値と単位を必ず記載（例：「WBC 12000/μL、CRP 15.2mg/dL」）
+- 検査値の経時的変化を示す際は、日付や入院日数とともに前後の値を比較して記載（例：「入院1日目のWBC 12000/μL、CRP 15.2mg/dLから、入院3日目にはWBC 8000/μL、CRP 8.5mg/dLに改善」）
+- 画像検査の所見も具体的に記載し、日付を明記すること
 
 【主な治療行為（手術、処置、薬物治療等）の必要性】
 (なぜその処置・ICU管理・入院料・手術・薬物治療が必要だったか。ガイドラインや重症度を根拠に記述。NGワード「患者の希望により」等は使用禁止。必ずですます調で記述すること)
 (※輸血がある場合は必ず「血液製剤の使用指針に従い、〜を目標に適正な輸血を実施した」の定型文と目標値を入れる)
+【重要】数値による根拠の記載：
+- 治療の必要性を示す数値（バイタルサイン、検査値、スコアなど）を必ず具体的に記載
+- 数値の変化を示す際は、前後の値を比較して記載すること
 
 【主な治療行為（手術、処置、薬物治療等）の経過】
 (実施した治療の経過を時系列で記述。手術・処置の内容、薬物治療の効果、経過観察の結果等。判明している情報のみで自然な文章にすること。必ずですます調で記述すること)
+【重要】時系列と数値の記載について：
+- 日付や入院日数を必ず記載して時系列を明確にする（例：「○月○日（入院○日目）に○○を実施」）
+- 治療前後のバイタルサインや検査値の変化を具体的な数値で記載（例：「手術前の血圧120/80mmHg、Hb 12.0g/dLから、手術後は血圧100/70mmHg、Hb 9.5g/dLとなった」）
+- 薬物治療の効果を示す際も、数値の変化を具体的に記載すること
+- 経過観察の結果も、日付と数値を使って時系列で記載すること
 
 ※各項目は明確に区別し、重複なく記述すること。`;
     }
@@ -603,6 +630,50 @@ ${RECEIPT_RULES}
   window.removeImg = (i) => { currentImages.splice(i, 1); renderImageGrid(); };
   function clearImages() { if(currentImages.length){ currentImages=[]; renderImageGrid(); showToast('画像を削除しました','warning'); } }
 
+  // 単一のドキュメントを生成する関数（サマリー＆詳記モード用）
+  async function generateSingleDoc(mode, freeText) {
+    const systemPrompt = getBasePrompt(mode);
+    
+    // 入力内容に応じたcontentsParts構築
+    const contentsParts = [];
+    const hasImages = currentImages.length > 0;
+    const hasText = freeText.length > 0;
+
+    if (hasImages) {
+      currentImages.forEach(d => contentsParts.push({ inline_data: { mime_type: "image/jpeg", data: d } }));
+    }
+
+    const instruction = "詳細が読み取れない情報は捏造せず、また「不明」とも書かずに、判明している情報だけで自然な文章にすること。編集の手間を省くため、不明な箇所の注釈は不要。";
+
+    if (hasImages && hasText) {
+      contentsParts.push({ text: `以下の画像(カルテ等)とメモを統合して作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
+    } else if (hasImages) {
+      contentsParts.push({ text: `以下の画像(カルテ等)を解析して作成せよ。${instruction}` });
+    } else {
+      contentsParts.push({ text: `以下のメモを元に作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: contentsParts }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+    })});
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || res.statusText);
+    }
+    const data = await res.json();
+    const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!result) {
+      throw new Error('結果が空でした');
+    }
+    
+    return result;
+  }
+
   async function generateDoc() {
     if (!apiKey) { showToast('APIキーを設定してください', 'error'); toggleSettings(); return; }
     const freeText = document.getElementById('inputText').value.trim();
@@ -625,6 +696,30 @@ ${RECEIPT_RULES}
     out.value = '';
 
     try {
+      // サマリー＆詳記モードの場合は順番に生成
+      if (currentMode === 'summary-shoki') {
+        try {
+          // まずサマリーを生成
+          status.textContent = `${currentModel} でサマリー生成中...`;
+          const summaryResult = await generateSingleDoc('summary', freeText);
+          
+          // 次に詳記を生成
+          status.textContent = `${currentModel} で詳記生成中...`;
+          const shokiResult = await generateSingleDoc('shoki', freeText);
+          
+          // 結果を結合
+          out.value = summaryResult + '\n\n' + '='.repeat(50) + '\n\n' + shokiResult;
+          status.textContent = '完了（サマリー＆詳記）';
+          continueBtn.style.display = 'none';
+          out.scrollTop = out.scrollHeight;
+          showToast('サマリー＆詳記の生成完了！', 'success');
+        } catch (e) {
+          // エラーは外側のcatchブロックで処理される
+          throw e;
+        }
+        return;
+      }
+      
       // Prompt Construction
       let systemPrompt = "";
       if (currentMode === 'consult') {
@@ -896,7 +991,8 @@ ${sD} ${mN}`;
     document.getElementById('statusText').textContent = '';
     
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+    const tabId = mode === 'summary-shoki' ? 'tabSummaryShoki' : 'tab' + mode.charAt(0).toUpperCase() + mode.slice(1);
+    document.getElementById(tabId).classList.add('active');
     
     document.getElementById('consultFields').style.display = (mode === 'consult') ? 'grid' : 'none';
     document.getElementById('letterFields').style.display = (mode === 'letter') ? 'grid' : 'none';
