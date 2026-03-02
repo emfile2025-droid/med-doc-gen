@@ -157,6 +157,16 @@
   .spinner { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #cameraInput { display: none; }
+
+  /* --- 個人情報排除の注意喚起 --- */
+  .notice-pii {
+    font-size: 13px; line-height: 1.5; color: #333;
+    background: linear-gradient(135deg, #fff8e6 0%, #fffbf0 100%);
+    border: 1px solid var(--warning);
+    border-left: 4px solid var(--warning);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;
+  }
+  .notice-pii strong { color: #b45309; }
 </style>
 </head>
 <body>
@@ -194,6 +204,10 @@
       <button onclick="window.location.reload(true)" style="background:#666; font-size:0.8rem; padding:5px 10px; border:none; color:#fff; border-radius:6px; cursor:pointer;">アプリを更新</button>
       <button onclick="toggleSettings()" style="padding:10px 20px; border:none; background:var(--primary); color:#fff; border-radius:6px; font-weight:bold;">閉じる</button>
     </div>
+  </div>
+
+  <div class="notice-pii" role="alert">
+    <strong>⚠️ 注意：</strong>本アプリはAPIへデータを送信します。使用前に<strong>氏名・患者ID・生年月日等の個人を特定できる情報を徹底的に排除（伏せ字または削除）</strong>してから入力してください。
   </div>
 
   <div class="tabs">
@@ -430,6 +444,9 @@
     '歯科・歯科口腔外科'
   ];
 
+  /* --- システムプロンプト冒頭の匿名化前提 --- */
+  const ANONYMOUS_PREMISE = '以下の入力は、既に特定の個人を識別できないよう加工された情報である。\n\n';
+
   /* --- 初期化 --- */
   window.onload = () => {
     document.getElementById('apiKeyInput').value = apiKey;
@@ -655,7 +672,7 @@ ${RECEIPT_RULES}
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
     const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
+      system_instruction: { parts: [{ text: ANONYMOUS_PREMISE + systemPrompt }] },
       contents: [{ parts: contentsParts }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
     })});
@@ -822,7 +839,7 @@ ${sD} ${mN}`;
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
+        system_instruction: { parts: [{ text: ANONYMOUS_PREMISE + systemPrompt }] },
         contents: [{ parts: contentsParts }],
         generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
       })});
@@ -953,7 +970,7 @@ ${sD} ${mN}`;
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
+        system_instruction: { parts: [{ text: ANONYMOUS_PREMISE + systemPrompt }] },
         contents: [
             { role: 'user', parts: lastContentsParts },
             { role: 'model', parts: [{ text: out.value }] },
