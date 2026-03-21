@@ -264,7 +264,7 @@
   /* 2025-03-15 | v5.0 | Gemini削除・ローカルLLM（OpenAI互換API）専用に変更 */
   /* 2025-03-15 | v5.0 | inputTextにラベル追加（画像・メモ＝AIへ送る補足を明示） */
   /* 2025-03-15 | v5.0 | 画面・ウィンドウキャプチャ（getDisplayMedia）追加 */
-  /* 2026-03-21 | v5.0.22 | モデルをqwen3-vl:4bに変更・IPアドレスを172.20.10.3:11434に変更 */
+  /* 2026-03-21 | v5.0.22 | モデルをqwen3-vl:latestに変更・IPアドレスを172.20.10.3:11434に変更 */
   /* --- Global State --- */
   let currentMode = 'summary';
   let localBaseUrl = localStorage.getItem('med_gen_local_url_v5') || 'http://172.20.10.3:11434';
@@ -302,7 +302,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'qwen3-vl:4b',
+        model: 'qwen3-vl:latest',
         messages: messages,
         max_tokens: 8192,
         temperature: 0.2
