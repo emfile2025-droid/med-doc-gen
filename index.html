@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<meta name="description" content="AI Medical Document Generator v4.12">
+<meta name="description" content="AI Medical Document Generator v5.0 (Local LLM)">
 <meta name="theme-color" content="#005088">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v4.12</title>
+<title>Med-Doc Gen v5.0</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -148,6 +148,11 @@
   .btn-generate { background: var(--primary); color: #fff; }
   .btn-generate:disabled { background: #95a5a6; cursor: not-allowed; }
   .btn-clear-imgs { font-size:12px; color:#c0392b; background:none; border:none; text-decoration:underline; cursor:pointer; }
+  .btn-capture {
+    font-size: 13px; padding: 10px 14px; border-radius: 8px; border: 2px dashed #7f8c8d;
+    background: #f4f6f7; color: var(--primary); font-weight: 700; cursor: pointer;
+  }
+  .btn-capture:hover { background: #e8ecee; border-color: var(--primary); }
   .btn-continue { background: #f39c12; color: #fff; margin-top: 10px; display: none; }
   .btn-copy { background: #27ae60; color: #fff; margin-top: 10px; }
   
@@ -158,15 +163,6 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   #cameraInput { display: none; }
 
-  /* --- 個人情報排除の注意喚起 --- */
-  .notice-pii {
-    font-size: 13px; line-height: 1.5; color: #333;
-    background: linear-gradient(135deg, #fff8e6 0%, #fffbf0 100%);
-    border: 1px solid var(--warning);
-    border-left: 4px solid var(--warning);
-    border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;
-  }
-  .notice-pii strong { color: #b45309; }
 </style>
 </head>
 <body>
@@ -186,28 +182,14 @@
   <div id="settingsArea">
     <div style="text-align:center; font-weight:bold; margin-bottom:10px;">設定</div>
     <div class="setting-group">
-      <div class="setting-label">Gemini API Key</div>
-      <input type="password" id="apiKeyInput" class="setting-input" placeholder="AIzaSy..." onchange="saveApiKey()">
-    </div>
-    <div class="setting-group">
-      <div class="setting-label">使用AIモデル</div>
-      <select id="modelSelect" class="setting-input" onchange="changeModel()">
-        <option value="gemini-2.5-pro">Gemini 2.5 Pro (約¥8/回) ★推奨</option>
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash (約¥2/回) 高速</option>
-        <option value="gemini-3-pro-preview">Gemini 3 Pro (約¥11/回)</option>
-        <option value="gemini-3-flash-preview">Gemini 3 Flash (約¥3/回)</option>
-        <option value="custom">カスタム...</option>
-      </select>
-      <input type="text" id="customModelInput" class="setting-input" style="display:none; margin-top:6px;" placeholder="gemini-experimental">
+      <div class="setting-label">ローカルLLMのURL</div>
+      <input type="text" id="localUrlInput" class="setting-input" placeholder="http://172.20.10.3:11434" onchange="saveLocalUrl()">
+      <div style="font-size:11px; color:#666; margin-top:4px;">llama-server のアドレス（例: http://172.20.10.3:11434）</div>
     </div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:10px;">
       <button onclick="window.location.reload(true)" style="background:#666; font-size:0.8rem; padding:5px 10px; border:none; color:#fff; border-radius:6px; cursor:pointer;">アプリを更新</button>
       <button onclick="toggleSettings()" style="padding:10px 20px; border:none; background:var(--primary); color:#fff; border-radius:6px; font-weight:bold;">閉じる</button>
     </div>
-  </div>
-
-  <div class="notice-pii" role="alert">
-    <strong>⚠️ 注意：</strong>本アプリはAPIへデータを送信します。使用前に<strong>氏名・患者ID・生年月日等の個人を特定できる情報を徹底的に排除（伏せ字または削除）</strong>してから入力してください。
   </div>
 
   <div class="tabs">
@@ -253,10 +235,14 @@
        <div class="btn-camera" onclick="document.getElementById('cameraInput').click()"><span>📷 経過/画像 (複数可)</span></div>
        <button class="btn-clear-imgs" onclick="clearImages()">全削除</button>
     </div>
+    <div class="label-row" style="margin-top:8px;">
+       <button type="button" class="btn-capture" onclick="captureScreenOrWindow()">🖥️ 画面・ウィンドウをキャプチャ</button>
+    </div>
     <input type="file" id="cameraInput" accept="image/*" multiple onchange="handleImageSelect(this)">
     <div class="image-grid" id="imageGrid"></div>
 
     <div class="hint" id="modeHint"></div>
+    <div class="label-row"><label for="inputText">画像・メモ（上の画像と一緒にAIへ送る補足）</label></div>
     <textarea id="inputText"></textarea>
 
     <button class="btn-main btn-generate" id="generateBtn" onclick="generateDoc()">
@@ -271,50 +257,64 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v4.12</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.0</div>
 </div>
 
 <script>
+  /* 2025-03-15 | v5.0 | Gemini削除・ローカルLLM（OpenAI互換API）専用に変更 */
+  /* 2025-03-15 | v5.0 | inputTextにラベル追加（画像・メモ＝AIへ送る補足を明示） */
+  /* 2025-03-15 | v5.0 | 画面・ウィンドウキャプチャ（getDisplayMedia）追加 */
   /* --- Global State --- */
   let currentMode = 'summary';
-  let apiKey = localStorage.getItem('med_gen_api_key_v3') || '';
-  let currentModel = localStorage.getItem('med_gen_model') || 'gemini-2.5-pro'; 
+  let localBaseUrl = localStorage.getItem('med_gen_local_url_v5') || 'http://172.20.10.3:11434';
   let currentImages = [];
   let lastContentsParts = null;
+  let lastUserContent = null;
 
-  /* --- 費用計算（2500字の日本語を処理した場合） --- */
-  // 日本語2500字をトークン数に換算（1文字≈1.5トークン、システムプロンプト・画像を含めて概算）
-  // 入力: 約5000トークン、出力: 約5000トークン（2500字の回答と仮定）として計算
-  function getModelCostEstimate(modelName) {
-    const INPUT_TOKENS = 5000;  // 2500字 + システムプロンプト + 画像などの概算
-    const OUTPUT_TOKENS = 5000; // 2500字の回答と仮定
-    const TOKENS_PER_MILLION = 1000000;
-    
-    // 1ドル = 150円で換算
-    const USD_TO_JPY = 150;
-    
-    let inputCost = 0;
-    let outputCost = 0;
-    
-    if (modelName === 'gemini-3-pro-preview') {
-      // プロンプト <= 200,000 トークンの場合
-      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 2.00;
-      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 12.00;
-    } else if (modelName === 'gemini-3-flash-preview') {
-      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 0.50;
-      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 3.00;
-    } else if (modelName === 'gemini-2.5-pro') {
-      // プロンプト <= 200,000 トークンの場合
-      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 1.25;
-      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 10.00;
-    } else if (modelName === 'gemini-2.5-flash') {
-      inputCost = (INPUT_TOKENS / TOKENS_PER_MILLION) * 0.30;
-      outputCost = (OUTPUT_TOKENS / TOKENS_PER_MILLION) * 2.50;
+  /* --- ローカルLLM呼び出し（OpenAI互換 /v1/chat/completions） --- */
+  function buildUserContent(contentsParts) {
+    const parts = [];
+    for (const p of contentsParts) {
+      if (p.inline_data) {
+        parts.push({ type: 'image_url', image_url: { url: 'data:' + (p.inline_data.mime_type || 'image/jpeg') + ';base64,' + p.inline_data.data } });
+      } else if (p.text) {
+        parts.push({ type: 'text', text: p.text });
+      }
     }
-    
-    const totalCostUSD = inputCost + outputCost;
-    const totalCostJPY = Math.round(totalCostUSD * USD_TO_JPY);
-    return totalCostJPY;
+    if (parts.length === 0) return '';
+    if (parts.length === 1 && parts[0].type === 'text') return parts[0].text;
+    return parts;
+  }
+
+  async function callLocalLLM(systemPrompt, userContent, previousAssistantText) {
+    const base = localBaseUrl.replace(/\/$/, '');
+    const url = base + '/v1/chat/completions';
+    const messages = [{ role: 'system', content: systemPrompt }];
+    if (previousAssistantText != null && previousAssistantText !== '') {
+      messages.push({ role: 'user', content: lastUserContent });
+      messages.push({ role: 'assistant', content: previousAssistantText });
+      messages.push({ role: 'user', content: '続きを書いて完成させてください。引き続き、不明な点は自然に省略し、「不明」とは書かないこと。' });
+    } else {
+      messages.push({ role: 'user', content: userContent });
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: '',
+        messages: messages,
+        max_tokens: 8192,
+        temperature: 0.2
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || res.statusText);
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (text == null || text === '') throw new Error('結果が空でした');
+    return text;
   }
 
   /* --- 定数・プロンプト --- */
@@ -444,24 +444,14 @@
     '歯科・歯科口腔外科'
   ];
 
-  /* --- システムプロンプト冒頭の匿名化前提 --- */
-  const ANONYMOUS_PREMISE = '以下の入力は、既に特定の個人を識別できないよう加工された情報である。\n\n';
-
   /* --- 初期化 --- */
   window.onload = () => {
-    document.getElementById('apiKeyInput').value = apiKey;
-    const select = document.getElementById('modelSelect');
-    if (![...select.options].some(o => o.value === currentModel)) {
-       select.value = 'custom';
-       document.getElementById('customModelInput').style.display = 'block';
-       document.getElementById('customModelInput').value = currentModel;
-    } else { select.value = currentModel; }
+    document.getElementById('localUrlInput').value = localBaseUrl;
     updateBadge();
 
     document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
     document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
 
-    // 診療科リストを設定
     const targetDeptSelect = document.getElementById('targetDept');
     DEPARTMENT_LIST.forEach(dept => {
       const option = document.createElement('option');
@@ -470,17 +460,6 @@
       targetDeptSelect.appendChild(option);
     });
 
-    // customModelInputのイベントリスナーを設定
-    document.getElementById('customModelInput').addEventListener('change', function(){
-      currentModel = this.value.trim() || 'gemini-2.5-pro';
-      localStorage.setItem('med_gen_model', currentModel);
-      updateBadge();
-    });
-
-    if (!apiKey) {
-      document.getElementById('settingsOverlay').style.display = 'block';
-      document.getElementById('settingsArea').style.display = 'block';
-    }
     setMode('summary');
   };
 
@@ -647,6 +626,61 @@ ${RECEIPT_RULES}
   window.removeImg = (i) => { currentImages.splice(i, 1); renderImageGrid(); };
   function clearImages() { if(currentImages.length){ currentImages=[]; renderImageGrid(); showToast('画像を削除しました','warning'); } }
 
+  /** 画面・ウィンドウをキャプチャして1枚画像として追加（getDisplayMedia）。HTTPSまたはlocalhost必須。 */
+  async function captureScreenOrWindow() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      showToast('このブラウザでは画面キャプチャに対応していません', 'warning');
+      return;
+    }
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        showToast('キャプチャがキャンセルされました', 'info');
+      } else {
+        showToast('画面キャプチャに失敗しました（HTTPSまたはlocalhostでお試しください）', 'error');
+      }
+      return;
+    }
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.muted = true;
+    video.playsInline = true;
+    await video.play().catch(() => {});
+    await new Promise((resolve) => {
+      if (video.readyState >= 2) resolve();
+      else video.onloadeddata = resolve;
+    });
+    await new Promise(r => setTimeout(r, 150));
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) {
+      stream.getTracks().forEach(t => t.stop());
+      showToast('キャプチャに失敗しました', 'error');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    let cw = w, ch = h, max = 1500;
+    if (w > h && w > max) { ch = Math.round(h * max / w); cw = max; } else if (h > max) { cw = Math.round(w * max / h); ch = max; }
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      stream.getTracks().forEach(t => t.stop());
+      showToast('キャプチャに失敗しました', 'error');
+      return;
+    }
+    ctx.drawImage(video, 0, 0, cw, ch);
+    stream.getTracks().forEach(t => t.stop());
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    if (!dataUrl || dataUrl.length < 100) {
+      showToast('画像の変換に失敗しました', 'error');
+      return;
+    }
+    currentImages.push(dataUrl.split(',')[1]);
+    renderImageGrid();
+    showToast('画面を1枚追加しました', 'success');
+  }
+
   // 単一のドキュメントを生成する関数（サマリー＆詳記モード用）
   async function generateSingleDoc(mode, freeText) {
     const systemPrompt = getBasePrompt(mode);
@@ -670,29 +704,12 @@ ${RECEIPT_RULES}
       contentsParts.push({ text: `以下のメモを元に作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-    const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-      system_instruction: { parts: [{ text: ANONYMOUS_PREMISE + systemPrompt }] },
-      contents: [{ parts: contentsParts }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-    })});
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || res.statusText);
-    }
-    const data = await res.json();
-    const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!result) {
-      throw new Error('結果が空でした');
-    }
-    
-    return result;
+    const userContent = buildUserContent(contentsParts);
+    return await callLocalLLM(systemPrompt, userContent, null);
   }
 
   async function generateDoc() {
-    if (!apiKey) { showToast('APIキーを設定してください', 'error'); toggleSettings(); return; }
+    if (!localBaseUrl) { showToast('設定でローカルLLMのURLを入力してください', 'error'); toggleSettings(); return; }
     const freeText = document.getElementById('inputText').value.trim();
     if (!freeText && currentImages.length === 0) { showToast('テキストか画像を入力してください', 'warning'); return; }
 
@@ -709,7 +726,7 @@ ${RECEIPT_RULES}
       btn.innerHTML = '<div class="spinner"></div><span>思考中...</span>';
     }
     continueBtn.style.display = 'none';
-    status.textContent = `${currentModel} で執筆中...`;
+    status.textContent = 'ローカルLLMで執筆中...';
     out.value = '';
 
     try {
@@ -717,11 +734,11 @@ ${RECEIPT_RULES}
       if (currentMode === 'summary-shoki') {
         try {
           // まずサマリーを生成
-          status.textContent = `${currentModel} でサマリー生成中...`;
+          status.textContent = 'ローカルLLMでサマリー生成中...';
           const summaryResult = await generateSingleDoc('summary', freeText);
           
           // 次に詳記を生成
-          status.textContent = `${currentModel} で詳記生成中...`;
+          status.textContent = 'ローカルLLMで詳記生成中...';
           const shokiResult = await generateSingleDoc('shoki', freeText);
           
           // 結果を結合
@@ -836,28 +853,14 @@ ${sD} ${mN}`;
       }
 
       lastContentsParts = contentsParts;
+      lastUserContent = buildUserContent(contentsParts);
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-        system_instruction: { parts: [{ text: ANONYMOUS_PREMISE + systemPrompt }] },
-        contents: [{ parts: contentsParts }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-      })});
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || res.statusText);
-      }
-      const data = await res.json();
-      const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (result) {
-        out.value = result;
-        status.textContent = '完了';
-        continueBtn.style.display = 'flex';
-        out.scrollTop = out.scrollHeight;
-        showToast('生成完了！', 'success');
-      } else { throw new Error('結果が空でした'); }
+      const result = await callLocalLLM(systemPrompt, lastUserContent, null);
+      out.value = result;
+      status.textContent = '完了';
+      continueBtn.style.display = 'flex';
+      out.scrollTop = out.scrollHeight;
+      showToast('生成完了！', 'success');
 
     } catch (e) { 
       showToast(`エラー: ${e.message}`, 'error'); 
@@ -880,6 +883,7 @@ ${sD} ${mN}`;
       showToast('続きを生成するには、先に文書を生成してください', 'warning');
       return;
     }
+    if (lastUserContent == null) lastUserContent = buildUserContent(lastContentsParts);
     const btn = document.getElementById('continueBtn');
     const out = document.getElementById('outputText');
     if (!out.value || out.value.trim().length === 0) {
@@ -968,31 +972,10 @@ ${sD} ${mN}`;
         systemPrompt = getBasePrompt(currentMode);
       }
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-        system_instruction: { parts: [{ text: ANONYMOUS_PREMISE + systemPrompt }] },
-        contents: [
-            { role: 'user', parts: lastContentsParts },
-            { role: 'model', parts: [{ text: out.value }] },
-            { role: 'user', parts: [{ text: "続きを書いて完成させてください。引き続き、不明な点は自然に省略し、「不明」とは書かないこと。" }] }
-        ],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-      })});
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || res.statusText);
-      }
-      
-      const data = await res.json();
-      const added = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (added) { 
-        out.value += added; 
-        out.scrollTop = out.scrollHeight; 
-        showToast('続きを追加しました', 'success'); 
-      } else {
-        throw new Error('続きの生成に失敗しました');
-      }
+      const added = await callLocalLLM(systemPrompt, lastUserContent, out.value);
+      out.value += added;
+      out.scrollTop = out.scrollHeight;
+      showToast('続きを追加しました', 'success');
     } catch(e) { 
       showToast('失敗: ' + e.message, 'error'); 
     } 
@@ -1025,26 +1008,20 @@ ${sD} ${mN}`;
     const isShow = s.display === 'block';
     s.display = o.display = isShow ? 'none' : 'block';
   }
-  function saveApiKey() {
-    const v = document.getElementById('apiKeyInput').value.trim();
-    if(v) { localStorage.setItem('med_gen_api_key_v3', v); apiKey = v; showToast('APIキー保存完了', 'success'); }
-  }
-  function changeModel() {
-    const s = document.getElementById('modelSelect');
-    const c = document.getElementById('customModelInput');
-    if(s.value==='custom'){ 
-      c.style.display='block'; 
-      currentModel=c.value.trim()||'gemini-2.5-pro'; 
-    } else { 
-      c.style.display='none'; 
-      currentModel=s.value; 
-    }
-    localStorage.setItem('med_gen_model', currentModel); 
+  function saveLocalUrl() {
+    const v = document.getElementById('localUrlInput').value.trim();
+    localBaseUrl = v ? v.replace(/\/$/, '') : 'http://172.20.10.3:11434';
+    localStorage.setItem('med_gen_local_url_v5', localBaseUrl);
     updateBadge();
+    showToast('URLを保存しました', 'success');
   }
   function updateBadge() {
-    let n = currentModel.replace('gemini-', '').replace('flash', '⚡Flash').replace('pro', 'Pro');
-    if(n.length>10) n='Custom'; document.getElementById('modelBadge').textContent = n;
+    try {
+      const host = localBaseUrl ? new URL(localBaseUrl).host : '未設定';
+      document.getElementById('modelBadge').textContent = host;
+    } catch (e) {
+      document.getElementById('modelBadge').textContent = 'Local';
+    }
   }
   function copyToClipboard() {
     const el = document.getElementById("outputText");
