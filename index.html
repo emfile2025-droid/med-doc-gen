@@ -182,9 +182,21 @@
   <div id="settingsArea">
     <div style="text-align:center; font-weight:bold; margin-bottom:10px;">設定</div>
     <div class="setting-group">
-      <div class="setting-label">ローカルLLMのURL</div>
-      <input type="text" id="localUrlInput" class="setting-input" placeholder="http://172.20.10.3:11434" onchange="saveLocalUrl()">
-      <div style="font-size:11px; color:#666; margin-top:4px;">llama-server のアドレス（例: http://172.20.10.3:11434）</div>
+      <div class="setting-label">Gemini API Key</div>
+      <input type="password" id="apiKeyInput" class="setting-input" placeholder="AIzaSy..." onchange="saveApiKey()">
+      <div style="font-size:11px; color:#666; margin-top:4px;">APIキーはこのブラウザ内に保存され、Gemini API呼び出しにのみ使用します。</div>
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">使用モデル</div>
+      <select id="modelSelect" class="setting-input" onchange="changeModel()">
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+        <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+      </select>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+        <div id="modelFetchStatus" style="flex:1; min-width:0; font-size:11px; color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">APIキー設定後に最新モデル一覧を取得できます。</div>
+        <button type="button" onclick="fetchAvailableModels()" style="padding:5px 10px; border:1px solid var(--primary); background:#fff; color:var(--primary); border-radius:6px; cursor:pointer; white-space:nowrap;">最新取得</button>
+      </div>
     </div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:10px;">
       <button onclick="window.location.reload(true)" style="background:#666; font-size:0.8rem; padding:5px 10px; border:none; color:#fff; border-radius:6px; cursor:pointer;">アプリを更新</button>
@@ -257,63 +269,57 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.0.22</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.1.0</div>
 </div>
 
 <script>
-  /* 2025-03-15 | v5.0 | Gemini削除・ローカルLLM（OpenAI互換API）専用に変更 */
+  /* 2026-06-29 | v5.1 | Gemini APIキー入力・最新モデル取得・モデル選択に対応 */
+  /* 2025-03-15 | v5.0 | ローカルLLM（OpenAI互換API）テスト版 */
   /* 2025-03-15 | v5.0 | inputTextにラベル追加（画像・メモ＝AIへ送る補足を明示） */
   /* 2025-03-15 | v5.0 | 画面・ウィンドウキャプチャ（getDisplayMedia）追加 */
-  /* 2026-03-21 | v5.0.22 | モデルをqwen3-vl:latestに変更・IPアドレスを172.20.10.3:11434に変更 */
+  /* 2026-03-21 | v5.0.22 | ローカルLLMテスト時の調整 */
   /* --- Global State --- */
   let currentMode = 'summary';
-  let localBaseUrl = localStorage.getItem('med_gen_local_url_v5') || 'http://172.20.10.3:11434';
+  let apiKey = localStorage.getItem('med_gen_api_key_v6') || localStorage.getItem('med_gen_api_key_v3') || '';
+  let currentModel = localStorage.getItem('med_gen_model_v6') || localStorage.getItem('med_gen_model') || 'gemini-2.5-flash';
   let currentImages = [];
   let lastContentsParts = null;
   let lastUserContent = null;
 
-  /* --- ローカルLLM呼び出し（OpenAI互換 /v1/chat/completions） --- */
   function buildUserContent(contentsParts) {
-    const parts = [];
-    for (const p of contentsParts) {
-      if (p.inline_data) {
-        parts.push({ type: 'image_url', image_url: { url: 'data:' + (p.inline_data.mime_type || 'image/jpeg') + ';base64,' + p.inline_data.data } });
-      } else if (p.text) {
-        parts.push({ type: 'text', text: p.text });
-      }
-    }
-    if (parts.length === 0) return '';
-    if (parts.length === 1 && parts[0].type === 'text') return parts[0].text;
-    return parts;
+    return contentsParts;
   }
 
-  async function callLocalLLM(systemPrompt, userContent, previousAssistantText) {
-    const base = localBaseUrl.replace(/\/$/, '');
-    const url = base + '/v1/chat/completions';
-    const messages = [{ role: 'system', content: systemPrompt }];
+  async function callGemini(systemPrompt, userContent, previousAssistantText) {
+    if (!apiKey) throw new Error('Gemini APIキーを設定してください');
+    if (!currentModel) throw new Error('使用モデルを選択してください');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+    const contents = [];
     if (previousAssistantText != null && previousAssistantText !== '') {
-      messages.push({ role: 'user', content: lastUserContent });
-      messages.push({ role: 'assistant', content: previousAssistantText });
-      messages.push({ role: 'user', content: '続きを書いて完成させてください。引き続き、不明な点は自然に省略し、「不明」とは書かないこと。' });
+      contents.push({ role: 'user', parts: lastUserContent });
+      contents.push({ role: 'model', parts: [{ text: previousAssistantText }] });
+      contents.push({ role: 'user', parts: [{ text: '続きを書いて完成させてください。引き続き、不明な点は自然に省略し、「不明」とは書かないこと。' }] });
     } else {
-      messages.push({ role: 'user', content: userContent });
+      contents.push({ role: 'user', parts: userContent });
     }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'qwen3-vl:latest',
-        messages: messages,
-        max_tokens: 8192,
-        temperature: 0.2
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 8192
+        }
       })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || res.statusText);
+      throw new Error(err.error?.message || res.statusText || `HTTP ${res.status}`);
     }
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content;
+    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('');
     if (text == null || text === '') throw new Error('結果が空でした');
     return text;
   }
@@ -447,8 +453,20 @@
 
   /* --- 初期化 --- */
   window.onload = () => {
-    document.getElementById('localUrlInput').value = localBaseUrl;
+    document.getElementById('apiKeyInput').value = apiKey;
+    const modelSelect = document.getElementById('modelSelect');
+    if (modelSelect) {
+      const hasCurrent = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
+      if (!hasCurrent) {
+        const opt = document.createElement('option');
+        opt.value = currentModel;
+        opt.textContent = currentModel;
+        modelSelect.appendChild(opt);
+      }
+      modelSelect.value = currentModel;
+    }
     updateBadge();
+    if (apiKey) fetchAvailableModels();
 
     document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
     document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
@@ -706,11 +724,11 @@ ${RECEIPT_RULES}
     }
 
     const userContent = buildUserContent(contentsParts);
-    return await callLocalLLM(systemPrompt, userContent, null);
+    return await callGemini(systemPrompt, userContent, null);
   }
 
   async function generateDoc() {
-    if (!localBaseUrl) { showToast('設定でローカルLLMのURLを入力してください', 'error'); toggleSettings(); return; }
+    if (!apiKey) { showToast('設定でGemini APIキーを入力してください', 'error'); toggleSettings(); return; }
     const freeText = document.getElementById('inputText').value.trim();
     if (!freeText && currentImages.length === 0) { showToast('テキストか画像を入力してください', 'warning'); return; }
 
@@ -727,7 +745,7 @@ ${RECEIPT_RULES}
       btn.innerHTML = '<div class="spinner"></div><span>思考中...</span>';
     }
     continueBtn.style.display = 'none';
-    status.textContent = 'ローカルLLMで執筆中...';
+    status.textContent = `${currentModel}で執筆中...`;
     out.value = '';
 
     try {
@@ -735,11 +753,11 @@ ${RECEIPT_RULES}
       if (currentMode === 'summary-shoki') {
         try {
           // まずサマリーを生成
-          status.textContent = 'ローカルLLMでサマリー生成中...';
+          status.textContent = `${currentModel}でサマリー生成中...`;
           const summaryResult = await generateSingleDoc('summary', freeText);
           
           // 次に詳記を生成
-          status.textContent = 'ローカルLLMで詳記生成中...';
+          status.textContent = `${currentModel}で詳記生成中...`;
           const shokiResult = await generateSingleDoc('shoki', freeText);
           
           // 結果を結合
@@ -856,7 +874,7 @@ ${sD} ${mN}`;
       lastContentsParts = contentsParts;
       lastUserContent = buildUserContent(contentsParts);
 
-      const result = await callLocalLLM(systemPrompt, lastUserContent, null);
+      const result = await callGemini(systemPrompt, lastUserContent, null);
       out.value = result;
       status.textContent = '完了';
       continueBtn.style.display = 'flex';
@@ -973,7 +991,7 @@ ${sD} ${mN}`;
         systemPrompt = getBasePrompt(currentMode);
       }
 
-      const added = await callLocalLLM(systemPrompt, lastUserContent, out.value);
+      const added = await callGemini(systemPrompt, lastUserContent, out.value);
       out.value += added;
       out.scrollTop = out.scrollHeight;
       showToast('続きを追加しました', 'success');
@@ -1009,20 +1027,91 @@ ${sD} ${mN}`;
     const isShow = s.display === 'block';
     s.display = o.display = isShow ? 'none' : 'block';
   }
-  function saveLocalUrl() {
-    const v = document.getElementById('localUrlInput').value.trim();
-    localBaseUrl = v ? v.replace(/\/$/, '') : 'http://172.20.10.3:11434';
-    localStorage.setItem('med_gen_local_url_v5', localBaseUrl);
+  function saveApiKey() {
+    const v = document.getElementById('apiKeyInput').value.trim();
+    apiKey = v;
+    localStorage.setItem('med_gen_api_key_v6', apiKey);
     updateBadge();
-    showToast('URLを保存しました', 'success');
+    showToast('APIキーを保存しました', 'success');
+    if (apiKey) fetchAvailableModels();
   }
-  function updateBadge() {
-    try {
-      const host = localBaseUrl ? new URL(localBaseUrl).host : '未設定';
-      document.getElementById('modelBadge').textContent = host;
-    } catch (e) {
-      document.getElementById('modelBadge').textContent = 'Local';
+
+  function changeModel() {
+    const s = document.getElementById('modelSelect');
+    currentModel = s.value || 'gemini-2.5-flash';
+    localStorage.setItem('med_gen_model_v6', currentModel);
+    localStorage.setItem('med_gen_model', currentModel);
+    updateBadge();
+  }
+
+  async function fetchAvailableModels() {
+    const status = document.getElementById('modelFetchStatus');
+    if (!apiKey) {
+      if (status) status.textContent = 'APIキーを入力すると最新モデル一覧を取得できます。';
+      return;
     }
+    if (status) status.textContent = 'モデル一覧を取得中...';
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}&pageSize=50`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const models = (data.models || [])
+        .filter(m =>
+          m.name &&
+          m.name.includes('gemini') &&
+          (m.supportedGenerationMethods || []).includes('generateContent') &&
+          !m.name.includes('embedding') &&
+          !m.name.includes('aqa') &&
+          !m.name.includes('imagen')
+        )
+        .map(m => ({
+          id: m.name.replace('models/', ''),
+          displayName: m.displayName || m.name.replace('models/', '')
+        }))
+        .sort((a, b) => {
+          const tier = id => id.includes('pro') ? 3 : id.includes('flash-lite') || id.includes('flash_lite') ? 1 : id.includes('flash') ? 2 : 0;
+          const diff = tier(b.id) - tier(a.id);
+          return diff || b.id.localeCompare(a.id);
+        });
+      if (models.length === 0) throw new Error('利用可能なモデルが見つかりません');
+      updateModelSelectOptions(models);
+      if (status) status.textContent = `${models.length}件のモデルを取得しました`;
+    } catch (e) {
+      console.warn('[fetchAvailableModels]', e);
+      if (status) status.textContent = `モデル取得失敗: ${e.message}`;
+    }
+  }
+
+  function updateModelSelectOptions(models) {
+    const select = document.getElementById('modelSelect');
+    if (!select) return;
+    const previous = currentModel;
+    select.innerHTML = '';
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.displayName;
+      select.appendChild(opt);
+    });
+    if (models.some(m => m.id === previous)) {
+      select.value = previous;
+    } else {
+      const preferred = models.find(m => m.id.includes('flash') && !m.id.includes('lite')) || models[0];
+      select.value = preferred.id;
+      currentModel = preferred.id;
+      localStorage.setItem('med_gen_model_v6', currentModel);
+      localStorage.setItem('med_gen_model', currentModel);
+    }
+    updateBadge();
+  }
+
+  function updateBadge() {
+    const badge = document.getElementById('modelBadge');
+    if (!badge) return;
+    const name = currentModel
+      ? currentModel.replace('gemini-', '').replace('flash-lite', 'Flash Lite').replace('flash', 'Flash').replace('pro', 'Pro')
+      : '未設定';
+    badge.textContent = name.length > 16 ? currentModel : name;
   }
   function copyToClipboard() {
     const el = document.getElementById("outputText");
