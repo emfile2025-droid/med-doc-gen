@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v5.2.0</title>
+<title>Med-Doc Gen v5.2.1</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -295,10 +295,11 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.2.0</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.2.1</div>
 </div>
 
 <script>
+  /* 2026-06-29 | v5.2.1 | 画像の全削除ボタンを明示的なグローバル関数に修正 */
   /* 2026-06-29 | v5.2.0 | 救急向け診断書モードを追加 */
   /* 2026-06-29 | v5.1.1 | サマリー＆詳記を1回のGemini解析で2文書出力に変更 */
   /* 2026-06-29 | v5.1 | Gemini APIキー入力・最新モデル取得・モデル選択に対応 */
@@ -675,7 +676,14 @@ ${RECEIPT_RULES}
     });
   }
   window.removeImg = (i) => { currentImages.splice(i, 1); renderImageGrid(); };
-  function clearImages() { if(currentImages.length){ currentImages=[]; renderImageGrid(); showToast('画像を削除しました','warning'); } }
+  window.clearImages = () => {
+    const hadImages = currentImages.length > 0;
+    currentImages = [];
+    renderImageGrid();
+    const input = document.getElementById('cameraInput');
+    if (input) input.value = '';
+    showToast(hadImages ? '画像を削除しました' : '削除する画像はありません', hadImages ? 'warning' : 'info');
+  };
 
   /** 画面・ウィンドウをキャプチャして1枚画像として追加（getDisplayMedia）。HTTPSまたはlocalhost必須。 */
   async function captureScreenOrWindow() {
