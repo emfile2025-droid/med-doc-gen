@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v5.1.1</title>
+<title>Med-Doc Gen v5.2.0</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -208,6 +208,7 @@
     <button class="tab active" onclick="setMode('summary')" id="tabSummary">退院サマリー</button>
     <button class="tab" onclick="setMode('shoki')" id="tabShoki">症状詳記</button>
     <button class="tab" onclick="setMode('summary-shoki')" id="tabSummaryShoki">サマリー＆詳記</button>
+    <button class="tab" onclick="setMode('certificate')" id="tabCertificate">診断書</button>
     <button class="tab" onclick="setMode('letter')" id="tabLetter">紹介状</button>
     <button class="tab" onclick="setMode('consult')" id="tabConsult">コンサルト</button>
   </div>
@@ -235,6 +236,31 @@
         <option value="入院経過報告">入院経過報告</option>
         <option value="その他">その他</option>
       </select></div>
+    </div>
+    <div id="certificateFields" class="field-grid">
+      <div><span class="field-label">提出目的</span><select id="certificatePurpose" class="input-field">
+        <option value="">選択してください</option>
+        <option value="警察提出">警察提出</option>
+        <option value="職場提出">職場提出</option>
+        <option value="学校提出">学校提出</option>
+        <option value="保険会社提出">保険会社提出</option>
+        <option value="自賠責関連">自賠責関連</option>
+        <option value="その他">その他</option>
+      </select></div>
+      <div><span class="field-label">療養期間</span><select id="certificateDuration" class="input-field">
+        <option value="">選択してください</option>
+        <option value="当日">当日</option>
+        <option value="1日">1日</option>
+        <option value="3日">3日</option>
+        <option value="5日">5日</option>
+        <option value="7日">7日</option>
+        <option value="10日">10日</option>
+        <option value="14日">14日</option>
+        <option value="21日">21日</option>
+        <option value="28日">28日</option>
+        <option value="医師判断">医師判断</option>
+      </select></div>
+      <div class="field-full"><span class="field-label">提出先/宛先（任意）</span><input type="text" id="certificateRecipient" class="input-field" placeholder="例: ○○警察署 / 勤務先 / 学校 / 保険会社"></div>
     </div>
     <div id="sourceFields" class="field-grid" style="margin-top:0;">
       <div><span class="field-label">紹介元(自科) ※保存</span><input type="text" id="sourceDept" class="input-field" placeholder="例: 救急科" onchange="saveProfile()"></div>
@@ -269,10 +295,11 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.1.1</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.2.0</div>
 </div>
 
 <script>
+  /* 2026-06-29 | v5.2.0 | 救急向け診断書モードを追加 */
   /* 2026-06-29 | v5.1.1 | サマリー＆詳記を1回のGemini解析で2文書出力に変更 */
   /* 2026-06-29 | v5.1 | Gemini APIキー入力・最新モデル取得・モデル選択に対応 */
   /* 2025-03-15 | v5.0 | ローカルLLM（OpenAI互換API）テスト版 */
@@ -417,6 +444,10 @@
     'summary-shoki': {
       hint: '<strong>サマリー＆詳記</strong>: 退院サマリーと症状詳記を順番に生成します。同一の入力で両方を一括出力できます。',
       placeholder: '補足メモ (例: 入院時所見の詳細、敗血症の原因、輸血前後のデータなど)'
+    },
+    certificate: {
+      hint: '<strong>診断書</strong>: 救急外来で多い提出目的に合わせ、病名・所見・療養期間・注意事項を簡潔な診断書下書きに整えます。',
+      placeholder: '補足メモ (例: 受傷日時、症状、外傷部位、検査結果、処置、就労/登校制限など)'
     }
   };
 
@@ -812,7 +843,52 @@ ${getBasePrompt('shoki')}
       
       // Prompt Construction
       let systemPrompt = "";
-      if (currentMode === 'consult') {
+      if (currentMode === 'certificate') {
+        const purpose = document.getElementById('certificatePurpose').value || '救急診療後の診断書';
+        const duration = document.getElementById('certificateDuration').value || '医師判断';
+        const recipient = document.getElementById('certificateRecipient').value || '';
+        let purposeGuide = '提出目的に合わせて、必要十分かつ簡潔な診断書下書きにすること。';
+        if (purpose === '自賠責関連' || purpose === '警察提出' || purpose === '保険会社提出') {
+          purposeGuide = '外傷部位、受傷機転、初診時所見、検査結果、処置、通院・加療見込みを、カルテから読み取れる範囲で簡潔に記載すること。自賠責・警察・保険会社向けに、過大表現を避けつつ医学的所見が伝わる文面にすること。';
+        } else if (purpose === '職場提出' || purpose === '学校提出') {
+          purposeGuide = '職場・学校提出向けに、詳細すぎる医学情報は避け、休養の必要性、就労または登校の可否、感染症や外傷で必要な注意点が分かる簡潔な文面にすること。';
+        }
+
+        systemPrompt = `あなたは救急外来の医師です。カルテ画像・メモから、医師が最終確認して使用するための診断書下書きを作成してください。
+${FORMAT_RULES}
+${ANTI_HALLUCINATION_RULES}
+
+【重要】
+- これは法的効力のある完成文書ではなく、医師確認前提の下書きです。
+- カルテにない情報、診断名、日付、期間、因果関係を捏造しないこと。
+- 虚偽記載や過大表現を避け、判明している事実だけで自然な文面にすること。
+- 患者氏名、住所、生年月日など個人情報は、入力に明記がない限り補完しないこと。
+
+【固定パラメータ】
+提出目的: ${purpose}
+療養期間: ${duration}
+提出先/宛先: ${recipient || '指定なし'}
+
+【目的別の書き方】
+${purposeGuide}
+
+【出力形式】
+必ず以下の形式で簡潔に出力してください。
+
+【診断書】
+
+病名：
+所見：
+療養期間：
+療養上の注意：
+備考：
+
+【記載ルール】
+- 病名はカルテから読み取れる診断名を記載し、確定診断でない場合は疑いとして自然に表現すること。
+- 所見は救急受診時の症状、診察所見、検査所見、処置を簡潔にまとめること。
+- 療養期間は「${duration}」を基本に、医師判断の場合はカルテ内容から妥当な表現にすること。
+- 備考には提出目的に応じた補足のみを短く記載すること。`;
+      } else if (currentMode === 'consult') {
         const tD = document.getElementById('targetDept').value || '〇〇科';
         const p = document.getElementById('consultPurpose').value || '';
         const sD = document.getElementById('sourceDept').value || '当科';
@@ -1052,6 +1128,7 @@ ${sD} ${mN}`;
     
     document.getElementById('consultFields').style.display = (mode === 'consult') ? 'grid' : 'none';
     document.getElementById('letterFields').style.display = (mode === 'letter') ? 'grid' : 'none';
+    document.getElementById('certificateFields').style.display = (mode === 'certificate') ? 'grid' : 'none';
     document.getElementById('sourceFields').style.display = (mode === 'consult' || mode === 'letter') ? 'grid' : 'none';
 
     document.getElementById('modeHint').innerHTML = MODE_HINTS[mode].hint;
