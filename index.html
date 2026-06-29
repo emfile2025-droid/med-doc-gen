@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v5.0.22</title>
+<title>Med-Doc Gen v5.1.1</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -269,10 +269,11 @@
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.1.0</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.1.1</div>
 </div>
 
 <script>
+  /* 2026-06-29 | v5.1.1 | サマリー＆詳記を1回のGemini解析で2文書出力に変更 */
   /* 2026-06-29 | v5.1 | Gemini APIキー入力・最新モデル取得・モデル選択に対応 */
   /* 2025-03-15 | v5.0 | ローカルLLM（OpenAI互換API）テスト版 */
   /* 2025-03-15 | v5.0 | inputTextにラベル追加（画像・メモ＝AIへ送る補足を明示） */
@@ -700,11 +701,7 @@ ${RECEIPT_RULES}
     showToast('画面を1枚追加しました', 'success');
   }
 
-  // 単一のドキュメントを生成する関数（サマリー＆詳記モード用）
-  async function generateSingleDoc(mode, freeText) {
-    const systemPrompt = getBasePrompt(mode);
-    
-    // 入力内容に応じたcontentsParts構築
+  function buildDocumentContentsParts(freeText, leadText, imageOnlyLeadText = null) {
     const contentsParts = [];
     const hasImages = currentImages.length > 0;
     const hasText = freeText.length > 0;
@@ -716,14 +713,62 @@ ${RECEIPT_RULES}
     const instruction = "詳細が読み取れない情報は捏造せず、また「不明」とも書かずに、判明している情報だけで自然な文章にすること。編集の手間を省くため、不明な箇所の注釈は不要。";
 
     if (hasImages && hasText) {
-      contentsParts.push({ text: `以下の画像(カルテ等)とメモを統合して作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
+      contentsParts.push({ text: `${leadText}${instruction}\n\n【メモ】\n${freeText}` });
     } else if (hasImages) {
-      contentsParts.push({ text: `以下の画像(カルテ等)を解析して作成せよ。${instruction}` });
+      contentsParts.push({ text: `${imageOnlyLeadText || leadText}${instruction}` });
     } else {
       contentsParts.push({ text: `以下のメモを元に作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
     }
 
+    return contentsParts;
+  }
+
+  // 単一のドキュメントを生成する関数
+  async function generateSingleDoc(mode, freeText) {
+    const systemPrompt = getBasePrompt(mode);
+    const contentsParts = buildDocumentContentsParts(
+      freeText,
+      '以下の画像(カルテ等)とメモを統合して作成せよ。',
+      '以下の画像(カルテ等)を解析して作成せよ。'
+    );
     const userContent = buildUserContent(contentsParts);
+    return await callGemini(systemPrompt, userContent, null);
+  }
+
+  // サマリー＆詳記モード: 画像を1回だけ解析し、2文書をまとめて出力する
+  async function generateSummaryAndShoki(freeText) {
+    const systemPrompt = `あなたは医療文書作成を支援する医師向けAIです。
+提供された画像・メモを一度だけ丁寧に読み取り、その同じ共通情報から「退院サマリー」と「症状詳記」をそれぞれ作成してください。
+片方を短く省略せず、各文書の目的に合わせて必要な情報を十分に記載してください。
+
+${FORMAT_RULES}
+${ANTI_HALLUCINATION_RULES}
+
+【退院サマリーの作成方針】
+${getBasePrompt('summary')}
+
+【症状詳記の作成方針】
+${getBasePrompt('shoki')}
+
+【出力形式】
+必ず以下の順序と区切りで出力してください。
+
+【退院サマリー】
+(退院サマリー本文)
+
+==================================================
+
+【症状詳記】
+(症状詳記本文)`;
+
+    const contentsParts = buildDocumentContentsParts(
+      freeText,
+      '以下の画像(カルテ等)とメモを一度だけ統合して読み取り、退院サマリーと症状詳記の2文書を作成せよ。',
+      '以下の画像(カルテ等)を一度だけ解析して、退院サマリーと症状詳記の2文書を作成せよ。'
+    );
+    const userContent = buildUserContent(contentsParts);
+    lastContentsParts = contentsParts;
+    lastUserContent = userContent;
     return await callGemini(systemPrompt, userContent, null);
   }
 
@@ -749,19 +794,11 @@ ${RECEIPT_RULES}
     out.value = '';
 
     try {
-      // サマリー＆詳記モードの場合は順番に生成
+      // サマリー＆詳記モードの場合は1回の解析で2文書を生成
       if (currentMode === 'summary-shoki') {
         try {
-          // まずサマリーを生成
-          status.textContent = `${currentModel}でサマリー生成中...`;
-          const summaryResult = await generateSingleDoc('summary', freeText);
-          
-          // 次に詳記を生成
-          status.textContent = `${currentModel}で詳記生成中...`;
-          const shokiResult = await generateSingleDoc('shoki', freeText);
-          
-          // 結果を結合
-          out.value = summaryResult + '\n\n' + '='.repeat(50) + '\n\n' + shokiResult;
+          status.textContent = 'サマリー＆詳記を一括生成中...';
+          out.value = await generateSummaryAndShoki(freeText);
           status.textContent = '完了（サマリー＆詳記）';
           continueBtn.style.display = 'none';
           out.scrollTop = out.scrollHeight;
