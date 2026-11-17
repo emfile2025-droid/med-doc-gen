@@ -1,57 +1,41 @@
-const CACHE_NAME = 'med-doc-v4.4-cache';
-const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon.png'
-];
+const SCOPE = self.registration.scope;
+const PREFIX = 'med-doc-gen:' + SCOPE + ':';
+const CACHE_NAME = PREFIX + '5.4.0';
+const assets = ['./', 'index.html', 'manifest.json', 'icon.png'].map(path => new URL(path, SCOPE).href);
 
-// インストール時：キャッシュできるものはしておく
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(urlsToCache);
-      })
-  );
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(assets.map(url => new Request(url, { cache: 'reload' })));
+    await self.skipWaiting();
+  })());
 });
 
-// リクエスト時：ネットワーク優先 (Network First)
-// 常に最新のHTMLを取りに行き、オフラインの時だけキャッシュを使う
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // 正常に取得できたらキャッシュを更新して、そのレスポンスを返す
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    for (const name of await caches.keys()) {
+      if (name.startsWith(PREFIX) && name !== CACHE_NAME) await caches.delete(name);
+      if (name === 'med-doc-v4.4-cache') {
+        const old = await caches.open(name);
+        for (const request of await old.keys()) {
+          if (request.url.startsWith(SCOPE)) await old.delete(request);
         }
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME)
-          .then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        return response;
-      })
-      .catch(() => {
-        // オフラインやエラー時はキャッシュを返す
-        return caches.match(event.request);
-      })
-  );
+        if ((await old.keys()).length === 0) await caches.delete(name);
+      }
+    }
+    await self.clients.claim();
+  })());
 });
 
-// 更新時：古いキャッシュを削除
-self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  const page = url.origin + url.pathname;
+  if (request.mode === 'navigate' && (page === SCOPE || page === assets[1])) {
+    event.respondWith(fetch(request, { cache: 'no-cache' }).catch(async () =>
+      (await caches.open(CACHE_NAME)).match(assets[1])));
+  } else if (assets.includes(request.url)) {
+    event.respondWith((async () => (await (await caches.open(CACHE_NAME)).match(request)) || fetch(request))());
+  }
 });

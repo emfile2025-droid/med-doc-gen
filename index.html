@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<meta name="description" content="AI Medical Document Generator v5.0 (Local LLM)">
+<meta name="description" content="Geminiによる退院サマリー・症状詳記・医療文書の作成支援">
 <meta name="theme-color" content="#005088">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v5.3.0</title>
+<title>Med-Doc Gen v5.4.0</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -183,7 +183,7 @@
     <div style="text-align:center; font-weight:bold; margin-bottom:10px;">設定</div>
     <div class="setting-group">
       <div class="setting-label">APIプロバイダー</div>
-      <select id="apiProvider" class="setting-input" onchange="changeProvider()">
+      <select aria-label="APIプロバイダー" id="apiProvider" class="setting-input" onchange="changeProvider()">
         <option value="developer">Gemini Developer API</option>
         <option value="vertex-express">Vertex AI Express Mode</option>
       </select>
@@ -194,14 +194,11 @@
       <div id="apiKeyHelp" style="font-size:11px; color:#666; margin-top:4px;">APIキーはこのブラウザ内に保存され、選択中のAPI呼び出しにのみ使用します。</div>
     </div>
     <div class="setting-group">
-      <div class="setting-label">使用モデル</div>
+      <label class="setting-label" for="modelSelect">使用モデル</label>
       <select id="modelSelect" class="setting-input" onchange="changeModel()">
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-        <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-        <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
       </select>
       <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-        <div id="modelFetchStatus" style="flex:1; min-width:0; font-size:11px; color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">APIキー設定後に最新モデル一覧を取得できます。</div>
+        <div id="modelFetchStatus" role="status" style="flex:1; min-width:0; font-size:12px; color:#566;">APIキー設定後に最新モデル一覧を取得できます。</div>
         <button type="button" onclick="fetchAvailableModels()" style="padding:5px 10px; border:1px solid var(--primary); background:#fff; color:var(--primary); border-radius:6px; cursor:pointer; white-space:nowrap;">最新取得</button>
       </div>
     </div>
@@ -297,15 +294,17 @@
 
   <div class="card">
     <div class="label-row"><label>iNote貼付用</label><span style="font-size:10px; color:#999;" id="statusText"></span></div>
+    <p id="requestUsage" role="status" style="font-size:12px; color:#4d6070; margin:0 0 6px"></p>
     <textarea id="outputText" readonly placeholder="ここに生成結果が出ます"></textarea>
     <button class="btn-main btn-continue" id="continueBtn" onclick="generateContinue()">🔄 続きを書く</button>
     <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.2.1</div>
+  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.4.0</div>
 </div>
 
 <script>
+  /* 2026-11-17 | v5.4.0 | Gemini 4と現在のモデル一覧に対応 */
   /* 2026-07-22 | v5.3.0 | Gemini Developer API / Vertex AI Express Mode切り替えに対応 */
   /* 2026-06-29 | v5.2.1 | 画像の全削除ボタンを明示的なグローバル関数に修正 */
   /* 2026-06-29 | v5.2.0 | 救急向け診断書モードを追加 */
@@ -317,7 +316,14 @@
   /* 2026-03-21 | v5.0.22 | ローカルLLMテスト時の調整 */
   /* --- Global State --- */
   let currentMode = 'summary';
-  const DEFAULT_MODEL = 'gemini-2.5-flash';
+  const DEFAULT_MODEL = 'gemini-4-hydrogen';
+  const MODEL_PRESETS = [
+    { id: DEFAULT_MODEL, displayName: 'Gemini 4 Hydrogen' },
+    { id: 'gemini-4-argon', displayName: 'Gemini 4 Argon' },
+    { id: 'gemini-4-carbon', displayName: 'Gemini 4 Carbon' },
+    { id: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash' },
+    { id: 'gemini-3.5-flash-lite', displayName: 'Gemini 3.5 Flash-Lite' }
+  ];
   const SETTINGS_KEY = 'med_gen_provider_settings_v7';
   let apiProvider = localStorage.getItem('med_gen_api_provider_v7') || 'developer';
   if (!['developer', 'vertex-express'].includes(apiProvider)) apiProvider = 'developer';
@@ -328,28 +334,32 @@
   let lastContentsParts = null;
   let lastUserContent = null;
   let modelFetchSequence = 0;
+  let documentRevision = 0;
+  let lastDocumentInputs = null;
+  let activeGeneration = null;
+  let lastFinishReason = '';
 
   function buildUserContent(contentsParts) {
     return contentsParts;
   }
 
+  function migrateModel(id) {
+    if (!id || ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'].includes(id)) return DEFAULT_MODEL;
+    if (id === 'gemini-2.5-flash-lite') return 'gemini-3.5-flash-lite';
+    return id;
+  }
+
   function loadProviderSettings() {
     const legacyKey = localStorage.getItem('med_gen_api_key_v6') || localStorage.getItem('med_gen_api_key_v3') || '';
-    const legacyModel = localStorage.getItem('med_gen_model_v6') || localStorage.getItem('med_gen_model') || DEFAULT_MODEL;
-    const defaults = {
-      developer: { key: legacyKey, model: legacyModel },
-      'vertex-express': { key: '', model: DEFAULT_MODEL }
+    const legacyModel = localStorage.getItem('med_gen_model_v6') || localStorage.getItem('med_gen_model');
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch {}
+    const dev = saved?.developer;
+    const vertex = saved?.['vertex-express'];
+    return {
+      developer: { key: dev?.key ?? legacyKey, model: migrateModel(dev?.model ?? legacyModel) },
+      'vertex-express': { key: vertex?.key ?? '', model: migrateModel(vertex?.model) }
     };
-    try {
-      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-      return {
-        developer: { ...defaults.developer, ...(saved.developer || {}) },
-        'vertex-express': { ...defaults['vertex-express'], ...(saved['vertex-express'] || {}) }
-      };
-    } catch (e) {
-      console.warn('[loadProviderSettings]', e);
-      return defaults;
-    }
   }
 
   function persistProviderSettings() {
@@ -358,47 +368,103 @@
     localStorage.setItem('med_gen_api_provider_v7', apiProvider);
   }
 
-  function buildGenerateContentUrl(provider, key, model) {
-    const encodedKey = encodeURIComponent(key);
-    const encodedModel = encodeURIComponent(model);
-    if (provider === 'vertex-express') {
-      return `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodedModel}:generateContent?key=${encodedKey}`;
-    }
-    return `https://generativelanguage.googleapis.com/v1beta/models/${encodedModel}:generateContent?key=${encodedKey}`;
+  function buildGenerateContentUrl(provider, model) {
+    const base = provider === 'vertex-express'
+      ? 'https://aiplatform.googleapis.com/v1/publishers/google/models/'
+      : 'https://generativelanguage.googleapis.com/v1beta/models/';
+    return base + encodeURIComponent(model) + ':generateContent';
+  }
+
+  function modelRates(model, date) {
+      const day = date.toISOString().slice(0, 10);
+      switch (model) {
+          case 'gemini-3.5-flash-lite': return { input: .30, output: 2.50, cached: .03 };
+          case 'gemini-3.8-flash': return day < '2027-01-01'
+              ? { input: .75, output: 3.75, cached: .075 } : { input: 1.50, output: 7.50, cached: .15 };
+          case DEFAULT_MODEL: return { input: 1.50, output: 7.50, cached: .075 };
+          case 'gemini-4-argon':
+          case 'gemini-4-carbon': return day < '2026-12-01'
+              ? { input: 2, output: 10, cached: .10 } : { input: 4, output: 20, cached: .20 };
+          default: return null;
+      }
+  }
+
+  function formatUsage(model, usage, date) {
+      const rate = modelRates(model, date);
+      const { promptTokenCount: input, candidatesTokenCount: output, totalTokenCount: total,
+          cachedContentTokenCount: cached = 0, toolUsePromptTokenCount: tools = 0 } = usage || {};
+      const thoughts = usage?.thoughtsTokenCount ?? (total === input + output ? 0 : undefined);
+      const validCount = number => Number.isSafeInteger(number) && number >= 0;
+      if (!rate || ![input, output, thoughts, cached].every(validCount) || cached > input || tools !== 0 ||
+          (total != null && total !== input + output + thoughts))
+          return '料金算定不能（利用量の内訳が不足、または標準料金の対象外）';
+      const yen = ((input - cached) * rate.input + cached * rate.cached + (output + thoughts) * rate.output) * 160 / 1e6;
+      const fmt = number => number.toLocaleString('ja-JP');
+      const cacheLabel = cached ? '（うちキャッシュ ' + fmt(cached) + '）' : '';
+      return '入力 ' + fmt(input) + cacheLabel + ' ／ 本文出力 ' + fmt(output) + ' ／ 思考 ' + fmt(thoughts)
+          + ' トークン · Developer API有料標準料金換算 約' + yen.toFixed(2) + '円（1ドル160円）';
   }
 
   async function callGemini(systemPrompt, userContent, previousAssistantText) {
     if (!apiKey) throw new Error('選択中のAPIプロバイダー用キーを設定してください');
     if (!currentModel) throw new Error('使用モデルを選択してください');
-    const url = buildGenerateContentUrl(apiProvider, apiKey, currentModel);
+    if (activeGeneration) throw new Error('生成中です。');
+    const model = currentModel;
+    const provider = apiProvider;
+    const key = apiKey;
+    const revision = documentRevision;
+    const url = buildGenerateContentUrl(provider, model);
     const contents = [];
     if (previousAssistantText != null && previousAssistantText !== '') {
-      contents.push({ role: 'user', parts: lastUserContent });
+      contents.push({ role: 'user', parts: userContent });
       contents.push({ role: 'model', parts: [{ text: previousAssistantText }] });
       contents.push({ role: 'user', parts: [{ text: '続きを書いて完成させてください。引き続き、不明な点は自然に省略し、「不明」とは書かないこと。' }] });
     } else {
       contents.push({ role: 'user', parts: userContent });
     }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 8192
-        }
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || res.statusText || `HTTP ${res.status}`);
+    const payload = { systemInstruction: { parts: [{ text: systemPrompt }] }, contents };
+    if (!model.startsWith('gemini-4-')) {
+      payload.generationConfig = { temperature: 0.2, maxOutputTokens: 8192 };
     }
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('');
-    if (text == null || text === '') throw new Error('結果が空でした');
-    return text;
+    const sentAt = new Date();
+    const controller = new AbortController();
+    activeGeneration = controller;
+    const timeout = setTimeout(() => controller.abort(), 300000);
+    document.getElementById('requestUsage').textContent = '';
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error?.message || 'HTTP ' + res.status);
+      }
+      const data = await res.json();
+      if (revision === documentRevision) {
+        const providerName = provider === 'vertex-express' ? 'Vertex' : 'Developer API';
+        document.getElementById('requestUsage').textContent =
+          '今回のリクエスト · ' + providerName + ' ／ ' + model + ' · ' + formatUsage(model, data.usageMetadata, sentAt);
+      }
+      const candidate = data.candidates?.[0];
+      const finish = candidate?.finishReason;
+      if (finish && finish !== 'STOP' && finish !== 'MAX_TOKENS') throw new Error('生成が中断されました（' + finish + '）。');
+      const text = candidate?.content?.parts?.filter(p => !p.thought && typeof p.text === 'string').map(p => p.text).join('');
+      if (!text?.trim()) throw new Error(data.promptFeedback?.blockReason || '本文を取得できませんでした');
+      if (revision === documentRevision) lastFinishReason = finish || '';
+      return text;
+    } catch (error) {
+      if (revision === documentRevision && !document.getElementById('requestUsage').textContent) {
+        document.getElementById('requestUsage').textContent = '今回のリクエスト · ' + model + ' · 利用量を取得できませんでした。';
+      }
+      if (error.name === 'AbortError') throw new Error('応答を取得できませんでした。再度お試しください。');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      activeGeneration = null;
+    }
   }
 
   /* --- 定数・プロンプト --- */
@@ -537,19 +603,7 @@
     document.getElementById('apiProvider').value = apiProvider;
     document.getElementById('apiKeyInput').value = apiKey;
     updateProviderUI();
-    const modelSelect = document.getElementById('modelSelect');
-    if (modelSelect) {
-      const hasCurrent = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
-      if (!hasCurrent) {
-        const opt = document.createElement('option');
-        opt.value = currentModel;
-        opt.textContent = currentModel;
-        modelSelect.appendChild(opt);
-      }
-      modelSelect.value = currentModel;
-    }
-    updateBadge();
-    if (apiKey) fetchAvailableModels();
+    refreshModelSettings();
 
     document.getElementById('sourceDept').value = localStorage.getItem('med_doc_source_dept') || '';
     document.getElementById('referrerName').value = localStorage.getItem('med_doc_referrer_name') || '';
@@ -856,9 +910,24 @@ ${getBasePrompt('shoki')}
       '以下の画像(カルテ等)を一度だけ解析して、退院サマリーと症状詳記の2文書を作成せよ。'
     );
     const userContent = buildUserContent(contentsParts);
-    lastContentsParts = contentsParts;
-    lastUserContent = userContent;
     return await callGemini(systemPrompt, userContent, null);
+  }
+
+  function captureDocumentInputs() {
+    const fields = ['inputText', 'targetDept', 'consultPurpose', 'targetHospital', 'letterPurpose',
+      'certificatePurpose', 'certificateDuration', 'certificateRecipient', 'sourceDept', 'referrerName'];
+    return { fields: fields.map(id => document.getElementById(id).value), images: currentImages.slice() };
+  }
+
+  function inputsMatch(snapshot) {
+    if (!snapshot) return false;
+    const now = captureDocumentInputs();
+    return snapshot.fields.every((value, i) => value === now.fields[i]) &&
+      snapshot.images.length === now.images.length && snapshot.images.every((image, i) => image === now.images[i]);
+  }
+
+  function requireCurrentInputs(snapshot) {
+    if (!inputsMatch(snapshot)) throw new Error('送信後に入力内容が変わりました。現在の内容で生成し直してください。');
   }
 
   async function generateDoc() {
@@ -867,6 +936,9 @@ ${getBasePrompt('shoki')}
     if (!freeText && currentImages.length === 0) { showToast('テキストか画像を入力してください', 'warning'); return; }
 
     const btn = document.getElementById('generateBtn');
+    if (btn.disabled || activeGeneration) return;
+    const revision = documentRevision;
+    const inputs = captureDocumentInputs();
     const out = document.getElementById('outputText');
     const status = document.getElementById('statusText');
     const continueBtn = document.getElementById('continueBtn');
@@ -879,23 +951,23 @@ ${getBasePrompt('shoki')}
       btn.innerHTML = '<div class="spinner"></div><span>思考中...</span>';
     }
     continueBtn.style.display = 'none';
-    status.textContent = `${currentModel}で執筆中...`;
-    out.value = '';
+    status.textContent = `${currentModel}で執筆中...` + (out.value ? '（前回の文書を表示中）' : '');
 
     try {
       // サマリー＆詳記モードの場合は1回の解析で2文書を生成
       if (currentMode === 'summary-shoki') {
-        try {
-          status.textContent = 'サマリー＆詳記を一括生成中...';
-          out.value = await generateSummaryAndShoki(freeText);
-          status.textContent = '完了（サマリー＆詳記）';
-          continueBtn.style.display = 'none';
-          out.scrollTop = out.scrollHeight;
-          showToast('サマリー＆詳記の生成完了！', 'success');
-        } catch (e) {
-          // エラーは外側のcatchブロックで処理される
-          throw e;
-        }
+        status.textContent = 'サマリー＆詳記を一括生成中...' + (out.value ? '（前回の文書を表示中）' : '');
+        const result = await generateSummaryAndShoki(freeText);
+        if (revision !== documentRevision) return;
+        requireCurrentInputs(inputs);
+        out.value = result;
+        lastContentsParts = lastUserContent = null;
+        lastDocumentInputs = inputs;
+        const partial = lastFinishReason === 'MAX_TOKENS';
+        status.textContent = partial ? '出力上限に達したため、文書は途中までです' : '完了（サマリー＆詳記）';
+        continueBtn.style.display = 'none';
+        out.scrollTop = out.scrollHeight;
+        showToast(status.textContent, partial ? 'warning' : 'success');
         return;
       }
       
@@ -1042,20 +1114,25 @@ ${sD} ${mN}`;
         contentsParts.push({ text: `以下のメモを元に作成せよ。${instruction}\n\n【メモ】\n${freeText}` });
       }
 
+      const userContent = buildUserContent(contentsParts);
+      const result = await callGemini(systemPrompt, userContent, null);
+      if (revision !== documentRevision) return;
+      requireCurrentInputs(inputs);
       lastContentsParts = contentsParts;
-      lastUserContent = buildUserContent(contentsParts);
-
-      const result = await callGemini(systemPrompt, lastUserContent, null);
+      lastUserContent = userContent;
+      lastDocumentInputs = inputs;
       out.value = result;
-      status.textContent = '完了';
+      const partial = lastFinishReason === 'MAX_TOKENS';
+      status.textContent = partial ? '出力上限に達しました。「続きを書く」で再開できます' : '完了';
       continueBtn.style.display = 'flex';
       out.scrollTop = out.scrollHeight;
-      showToast('生成完了！', 'success');
+      showToast(status.textContent, partial ? 'warning' : 'success');
 
     } catch (e) { 
+      if (revision !== documentRevision) return;
       showToast(`エラー: ${e.message}`, 'error'); 
-      status.textContent = 'エラー';
-      // エラー時はlastContentsPartsを更新しない（前回の状態を保持）
+      status.textContent = out.value ? '生成に失敗しました（前回の文書を表示中）' : '生成に失敗しました';
+      continueBtn.style.display = lastUserContent && inputsMatch(lastDocumentInputs) ? 'flex' : 'none';
     } 
     finally { 
       btn.disabled = false;
@@ -1073,6 +1150,10 @@ ${sD} ${mN}`;
       showToast('続きを生成するには、先に文書を生成してください', 'warning');
       return;
     }
+    if (!inputsMatch(lastDocumentInputs)) {
+      showToast('入力内容が変わりました。「生成開始」で文書を作り直してください。', 'warning');
+      return;
+    }
     if (lastUserContent == null) lastUserContent = buildUserContent(lastContentsParts);
     const btn = document.getElementById('continueBtn');
     const out = document.getElementById('outputText');
@@ -1080,6 +1161,8 @@ ${sD} ${mN}`;
       showToast('続きを生成するには、先に文書を生成してください', 'warning');
       return;
     }
+    if (btn.disabled || activeGeneration || document.getElementById('generateBtn').disabled) return;
+    const revision = documentRevision;
     const orgHTML = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<div class="spinner"></div><span>続き...</span>';
     try {
@@ -1163,17 +1246,26 @@ ${sD} ${mN}`;
       }
 
       const added = await callGemini(systemPrompt, lastUserContent, out.value);
+      if (revision !== documentRevision) return;
+      requireCurrentInputs(lastDocumentInputs);
       out.value += added;
+      document.getElementById('statusText').textContent = lastFinishReason === 'MAX_TOKENS' ? '出力上限に達しました。「続きを書く」で再開できます' : '完了';
       out.scrollTop = out.scrollHeight;
       showToast('続きを追加しました', 'success');
     } catch(e) { 
-      showToast('失敗: ' + e.message, 'error'); 
+      if (revision === documentRevision) showToast('失敗: ' + e.message, 'error');
     } 
     finally { btn.disabled = false; btn.innerHTML = orgHTML; }
   }
 
   function setMode(mode) {
+    documentRevision++;
+    activeGeneration?.abort();
     currentMode = mode;
+    lastDocumentInputs = null;
+    lastUserContent = null;
+    lastFinishReason = '';
+    document.getElementById('requestUsage').textContent = '';
     // モード切り替え時に前回の生成状態をリセット
     lastContentsParts = null;
     document.getElementById('continueBtn').style.display = 'none';
@@ -1212,16 +1304,14 @@ ${sD} ${mN}`;
     }
   }
 
-  function setModelSelectValue(model) {
-    const select = document.getElementById('modelSelect');
-    if (!select) return;
-    if (!Array.from(select.options).some(opt => opt.value === model)) {
-      const opt = document.createElement('option');
-      opt.value = model;
-      opt.textContent = model;
-      select.appendChild(opt);
-    }
-    select.value = model;
+  function refreshModelSettings() {
+    modelFetchSequence++;
+    updateModelSelectOptions(MODEL_PRESETS);
+    updateBadge();
+    const status = document.getElementById('modelFetchStatus');
+    if (!apiKey) status.textContent = 'APIキーを設定すると、接続先のモデル一覧を確認できます。';
+    else if (apiProvider === 'vertex-express') status.textContent = '「最新取得」でVertex Model Gardenの候補を確認できます。';
+    else fetchAvailableModels();
   }
 
   function changeProvider() {
@@ -1234,22 +1324,17 @@ ${sD} ${mN}`;
     apiKey = providerSettings[apiProvider]?.key || '';
     currentModel = providerSettings[apiProvider]?.model || DEFAULT_MODEL;
     document.getElementById('apiKeyInput').value = apiKey;
-    setModelSelectValue(currentModel);
     updateProviderUI();
     persistProviderSettings();
-    updateBadge();
-    const status = document.getElementById('modelFetchStatus');
-    if (status) status.textContent = apiKey ? 'モデル一覧を取得中...' : 'APIキー設定後に最新モデル一覧を取得できます。';
-    if (apiKey) fetchAvailableModels();
+    refreshModelSettings();
   }
 
   function saveApiKey() {
     const v = document.getElementById('apiKeyInput').value.trim();
     apiKey = v;
     persistProviderSettings();
-    updateBadge();
+    refreshModelSettings();
     showToast(`${apiProvider === 'vertex-express' ? 'Vertex AI Express' : 'Gemini Developer API'}キーを保存しました`, 'success');
-    if (apiKey) fetchAvailableModels();
   }
 
   function changeModel() {
@@ -1259,137 +1344,65 @@ ${sD} ${mN}`;
     updateBadge();
   }
 
-  const VERTEX_MODEL_CANDIDATES = [
-    'gemini-3.5-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-flash-lite',
-    'gemini-3-flash-preview',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite'
-  ];
-
-  async function fetchDeveloperModels(key) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=50`;
-    const res = await fetch(url);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
-    return (data.models || [])
-      .filter(m =>
-        m.name &&
-        m.name.includes('gemini') &&
-        (m.supportedGenerationMethods || []).includes('generateContent') &&
-        !/embedding|aqa|imagen|image|live|tts/i.test(m.name)
-      )
-      .map(m => ({
-        id: m.name.replace('models/', ''),
-        displayName: m.displayName || m.name.replace('models/', '')
-      }));
-  }
-
-  async function fetchVertexModels(key) {
-    const url = `https://aiplatform.googleapis.com/v1beta1/publishers/google/models?pageSize=100&listAllVersions=false&key=${encodeURIComponent(key)}`;
-    const res = await fetch(url);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
-    return (data.publisherModels || [])
-      .map(model => {
-        const id = (model.name || '').split('/').pop()?.split('@')[0] || '';
-        return { id, displayName: model.displayName || id };
-      })
-      .filter(model => model.id.startsWith('gemini-'))
-      .filter(model => !/image|embedding|live|tts/i.test(model.id));
-  }
-
-  async function canUseVertexModel(key, model) {
-    const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(model)}:countTokens?key=${encodeURIComponent(key)}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'model availability check' }] }] })
-    });
-    return res.ok;
-  }
-
-  async function fetchVertexFallbackModels(key) {
-    const models = [];
-    for (const id of VERTEX_MODEL_CANDIDATES) {
-      if (await canUseVertexModel(key, id)) models.push({ id, displayName: id });
-    }
-    return models;
-  }
-
   async function fetchAvailableModels() {
+    const sequence = ++modelFetchSequence;
+    const provider = apiProvider;
+    const key = apiKey;
     const status = document.getElementById('modelFetchStatus');
-    if (!apiKey) {
-      if (status) status.textContent = 'APIキーを入力すると最新モデル一覧を取得できます。';
+    if (!key) {
+      status.textContent = '先にAPIキーを設定してください。';
       return;
     }
-    const requestSequence = ++modelFetchSequence;
-    const requestProvider = apiProvider;
-    const requestKey = apiKey;
-    if (status) status.textContent = 'モデル一覧を取得中...';
+    const vertex = provider === 'vertex-express';
+    const url = new URL(vertex ? 'https://aiplatform.googleapis.com/v1beta1/publishers/google/models' :
+      'https://generativelanguage.googleapis.com/v1beta/models');
+    url.searchParams.set('pageSize', '100');
+    if (vertex) url.searchParams.set('listAllVersions', 'false');
+    const models = new Map();
+    const tokens = new Set();
+    status.textContent = 'モデル一覧を取得中…';
     try {
-      let models;
-      if (requestProvider === 'vertex-express') {
-        try {
-          models = await fetchVertexModels(requestKey);
-          if (models.length === 0) throw new Error('Model Gardenの一覧が空です');
-        } catch (listError) {
-          console.warn('[fetchVertexModels]', listError);
-          if (status) status.textContent = 'Model Garden取得失敗。候補モデルを確認中...';
-          models = await fetchVertexFallbackModels(requestKey);
+      while (true) {
+        const res = await fetch(url, { headers: { 'x-goog-api-key': key } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (sequence !== modelFetchSequence) return;
+        for (const item of (vertex ? data.publisherModels : data.models) || []) {
+          if (!vertex && !item.supportedGenerationMethods?.includes('generateContent')) continue;
+          const id = (item.name || '').split('/').pop().split('@')[0];
+          if (!/^gemini-\d+(?:\.\d+)?-(?:flash(?:-lite)?|pro|hydrogen|argon|carbon)(?:-(?:preview|exp))?(?:-\d+)*$/.test(id)) continue;
+          if (migrateModel(id) !== id) continue;
+          models.set(id, { id, displayName: item.displayName || id });
         }
-      } else {
-        models = await fetchDeveloperModels(requestKey);
+        if (!data.nextPageToken) break;
+        if (tokens.has(data.nextPageToken)) throw new Error('ページ情報が重複しています');
+        tokens.add(data.nextPageToken);
+        url.searchParams.set('pageToken', data.nextPageToken);
       }
-      if (requestSequence !== modelFetchSequence || requestProvider !== apiProvider) return;
-      models.sort((a, b) => {
-        const tier = id => id.includes('pro') ? 3 : id.includes('flash-lite') || id.includes('flash_lite') ? 1 : id.includes('flash') ? 2 : 0;
-        const diff = tier(b.id) - tier(a.id);
-        return diff || b.id.localeCompare(a.id);
-      });
-      if (models.length === 0) throw new Error('利用可能なモデルが見つかりません');
-      updateModelSelectOptions(models);
-      if (status) status.textContent = `${requestProvider === 'vertex-express' ? 'Vertex' : 'Developer API'}: ${models.length}件取得`;
-    } catch (e) {
-      if (requestSequence !== modelFetchSequence || requestProvider !== apiProvider) return;
-      console.warn('[fetchAvailableModels]', e);
-      if (status) status.textContent = `モデル取得失敗: ${e.message}`;
+      if (!models.size) throw new Error('対応するモデルが一覧にありません');
+      updateModelSelectOptions([...models.values()].sort((a, b) => b.id.localeCompare(a.id, 'en', { numeric: true })));
+      const label = vertex ? 'Model Gardenの候補' : '生成対応モデル';
+      status.textContent = label + ' ' + models.size + '件' +
+        (models.has(currentModel) ? '' : '。選択中のモデルは一覧に含まれていません。');
+    } catch (error) {
+      if (sequence === modelFetchSequence) status.textContent = '一覧を取得できませんでした（' + error.message + '）。表示中の候補から選択できます。';
     }
   }
 
   function updateModelSelectOptions(models) {
     const select = document.getElementById('modelSelect');
-    if (!select) return;
-    const previous = currentModel;
     select.innerHTML = '';
-    models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = m.displayName;
-      select.appendChild(opt);
-    });
-    if (models.some(m => m.id === previous)) {
-      select.value = previous;
-    } else {
-      const preferred = models.find(m => m.id.includes('flash') && !m.id.includes('lite')) || models[0];
-      select.value = preferred.id;
-      currentModel = preferred.id;
-      persistProviderSettings();
-    }
-    updateBadge();
+    for (const model of models) select.add(new Option(model.displayName, model.id));
+    if (!models.some(m => m.id === currentModel)) select.add(new Option(currentModel + '（保存済み）', currentModel));
+    select.value = currentModel;
   }
 
   function updateBadge() {
     const badge = document.getElementById('modelBadge');
-    if (!badge) return;
-    const name = currentModel
-      ? currentModel.replace('gemini-', '').replace('flash-lite', 'Flash Lite').replace('flash', 'Flash').replace('pro', 'Pro')
-      : '未設定';
-    const providerMark = apiProvider === 'vertex-express' ? 'Vertex' : 'Dev';
-    badge.textContent = `${providerMark}: ${name.length > 16 ? currentModel : name}`;
+    const label = MODEL_PRESETS.find(m => m.id === currentModel)?.displayName || currentModel;
+    badge.textContent = (apiProvider === 'vertex-express' ? 'Vertex' : 'Dev') + ' ／ ' + label;
   }
+
   function copyToClipboard() {
     const el = document.getElementById("outputText");
     if(!el.value || el.value.trim().length === 0) { 
