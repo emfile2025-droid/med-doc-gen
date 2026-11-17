@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="referrer" content="no-referrer">
+<title>モデル比較 | Med-Doc Gen</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f4f8;color:#182a39;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif}main{max-width:920px;margin:auto;padding:24px 16px 60px}h1{font-size:1.5rem;margin:.3em 0}h2,legend{font-size:1.1rem;font-weight:700}p{margin:.55em 0 1em}section,fieldset{border:1px solid #ccd8e1;border-radius:10px;padding:16px;margin:14px 0;background:white}fieldset{min-width:0;margin:0}label{font-size:.91rem;font-weight:650;display:block;margin:8px 0 4px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px;border:1px solid #aabac5;border-radius:6px}textarea{resize:vertical;min-height:9rem;line-height:1.6}button{color:white;background:#005088;padding:9px 16px;border:0;border-radius:7px;cursor:pointer}button.secondary{color:#005088;background:#e8f2f8}button:disabled{opacity:.5}#reviewText{min-height:17rem}.pair,.metrics{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0 14px}.actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}.source{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f7f9;border-radius:6px;padding:10px;max-height:13rem;overflow:auto}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{padding:7px;text-align:left;border-bottom:1px solid #d8e2e8}caption{text-align:left;font-weight:650}#status{color:#8c3500}a{color:#005088}#progress{font-weight:700}button:focus-visible,a:focus-visible{outline:3px solid #de8d25}@media(max-width:640px){.pair,.metrics{grid-template-columns:1fr}.metrics{gap:0}main{padding:14px 10px 40px}}
+</style>
+</head>
+<body><main>
+<h1>モデル比較</h1>
+<p>同じ匿名化症例から作成した2つの文書を、モデル名を伏せて順に校閲します。入力と集計はこのタブ内で扱います。</p>
+<section id="setup"><form id="setupForm" autocomplete="off">
+<label for="kind">比較する文書</label><select id="kind"><option>退院サマリー</option><option>症状詳記</option></select>
+<label for="source">照合用の原文メモ（任意）</label><textarea id="source" placeholder="画像などの原資料は手元で参照できます。"></textarea>
+<div class="pair">
+<fieldset><legend>候補1</legend><label for="model1">モデル名</label><input id="model1" required value="Gemini 4 Hydrogen" maxlength="100"><label for="doc1">生成した文書</label><textarea id="doc1" required></textarea></fieldset>
+<fieldset><legend>候補2</legend><label for="model2">モデル名</label><input id="model2" required value="Gemini 4 Argon" maxlength="100"><label for="doc2">生成した文書</label><textarea id="doc2" required></textarea></fieldset>
+</div><div class="actions"><button>順番をランダムにして開始</button><button type="button" class="secondary" id="backToResults" hidden>記録済みの結果を見る</button></div>
+</form></section>
+<section id="review" hidden><h2 id="progress" tabindex="-1"></h2>
+<details id="reference"><summary>原文メモを参照</summary><div class="source" id="sourcePreview"></div></details>
+<form id="reviewForm" autocomplete="off"><label for="reviewText">校閲する文書</label><textarea id="reviewText"></textarea>
+<p>文書を貼り付けられる状態まで修正したら、計時を止めてください。</p>
+<div class="actions"><button type="button" id="timerButton" class="secondary">校閲完了・計時停止</button><span id="elapsed"></span></div>
+<div class="metrics">
+<label>原資料にない理由・所見（件）<input id="unsupported" type="number" min="0" step="1" required></label>
+<label>数値・日付・単位の誤り（件）<input id="numeric" type="number" min="0" step="1" required></label>
+<label>重要事項の脱落（件）<input id="omitted" type="number" min="0" step="1" required></label>
+</div><div class="actions"><button id="record" disabled>評価を記録</button><button type="button" class="secondary" id="cancel">この比較を中止</button></div>
+</form></section>
+<section id="results" hidden><h2>比較結果</h2><div class="scroll"><table><caption>症例・文書別の評価</caption><thead><tr><th>比較</th><th>文書</th><th>順番</th><th>モデル</th><th>根拠なし</th><th>数値等の誤り</th><th>脱落</th><th>校閲秒</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="actions"><button class="secondary" id="export">評価のみCSV保存</button><button id="nextCase">次の比較</button></div></section>
+<p id="status" role="status" aria-live="polite"></p>
+</main>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+let pair = [], slot = 0, started = 0, duration = null, source = '', kind = '', interval = null;
+const records = [];
+const counts = ['unsupported', 'numeric', 'omitted'];
+function status(message) { byId('status').textContent = message; }
+function showRound() {
+  duration = null;
+  byId('setup').hidden = true;
+  byId('results').hidden = true;
+  byId('review').hidden = false;
+  byId('progress').textContent = kind + '　' + (slot === 0 ? '文書 A（1 / 2）' : '文書 B（2 / 2）');
+  byId('sourcePreview').textContent = source;
+  byId('reference').hidden = !source;
+  byId('reviewText').value = pair[slot].text;
+  byId('reviewText').readOnly = false;
+  counts.forEach(id => { byId(id).value = ''; });
+  byId('record').textContent = slot === 0 ? '記録して文書 B へ' : '記録してモデル名を表示';
+  byId('record').disabled = true;
+  byId('timerButton').disabled = false;
+  byId('progress').focus();
+  started = performance.now();
+  const update = () => { byId('elapsed').textContent = Math.floor((performance.now() - started)/1000) + ' 秒'; };
+  update();
+  interval = setInterval(update, 500);
+}
+byId('setupForm').onsubmit = event => {
+  event.preventDefault();
+  const names = [byId('model1').value.trim(), byId('model2').value.trim()];
+  const texts = [byId('doc1').value.trim(), byId('doc2').value.trim()];
+  if (names.some(n => !n) || names[0].toLowerCase() === names[1].toLowerCase() || texts.some(t => !t)) {
+    status('異なるモデル名と、それぞれの生成文を入力してください。'); return;
+  }
+  pair = names.map((model, i) => ({model, text:texts[i]}));
+  if (crypto.getRandomValues(new Uint8Array(1))[0] % 2) pair.reverse();
+  kind = byId('kind').value;
+  source = byId('source').value.trim();
+  ['doc1','doc2','source'].forEach(id => { byId(id).value = ''; });
+  slot = 0; status(''); showRound();
+};
+byId('timerButton').onclick = () => {
+  clearInterval(interval);
+  duration = Math.round((performance.now() - started)/1000);
+  byId('elapsed').textContent = duration + ' 秒';
+  byId('reviewText').readOnly = true;
+  byId('timerButton').disabled = true;
+  byId('record').disabled = false;
+  byId('unsupported').focus();
+};
+byId('reviewForm').onsubmit = event => {
+  event.preventDefault();
+  if (duration === null || !pair.length) return;
+  const numbers = counts.map(id => byId(id).value.trim());
+  if (numbers.some(v => !/^\d+$/.test(v) || !Number.isSafeInteger(Number(v)))) {
+    status('各項目に0以上の整数を入力してください。'); return;
+  }
+  status('');
+  pair[slot].score = [...numbers.map(Number), duration];
+  pair[slot].text = '';
+  if (!slot) { slot++; showRound(); return; }
+  const number = records.length/2 + 1;
+  pair.forEach((p,i) => records.push([number, kind, i ? 'B' : 'A', p.model, ...p.score]));
+  clearCase(); showResults();
+};
+function clearCase() {
+  clearInterval(interval); pair = []; source = ''; duration = null;
+  byId('sourcePreview').textContent = '';
+  ['source','reviewText','doc1','doc2',...counts].forEach(id => { byId(id).value = ''; });
+  byId('review').hidden = true;
+}
+function showResults() {
+  const rows = byId('rows');
+  rows.replaceChildren();
+  for (const record of records) {
+    const row = rows.insertRow();
+    for (const value of record) row.insertCell().textContent = String(value);
+  }
+  byId('results').hidden = !records.length;
+  byId('setup').hidden = !!records.length;
+}
+byId('cancel').onclick = () => {
+  if (!confirm('この比較の入力と未確定の評価を消去しますか？')) return;
+  clearCase(); showResults(); status('この比較を中止しました。');
+};
+byId('backToResults').onclick = () => { showResults(); status(''); };
+byId('nextCase').onclick = () => {
+  byId('backToResults').hidden = !records.length;
+  byId('setup').hidden = false; byId('results').hidden = true;
+  status(''); byId('kind').focus();
+};
+function csvCell(value) {
+  let s = String(value);
+  if (/^\s*[=+@-]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+byId('export').onclick = () => {
+  const headers = ['比較','文書','順番','モデル','根拠なし','数値・日付・単位の誤り','重要事項の脱落','校閲秒'];
+  const data = '\uFEFF' + [headers,...records].map(row => row.map(csvCell).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([data],{type:'text/csv;charset=utf-8'}));
+  const a = document.createElement('a'); a.href = url; a.download = 'med-doc-model-review.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+</script></body></html>

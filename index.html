@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <meta name="description" content="Geminiによる退院サマリー・症状詳記・医療文書の作成支援">
 <meta name="theme-color" content="#005088">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 
-<title>Med-Doc Gen v5.4.0</title>
+<title>Med-Doc Gen v5.5.0</title>
 <style>
   /* --- ベース設定 --- */
   :root {
@@ -73,13 +73,14 @@
     border-radius: 12px; display: none; flex-direction: column; gap: 16px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.1); z-index: 100;
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 90%; max-width: 400px;
+    width: 90%; max-width: 400px; max-height: 92vh; overflow-y: auto;
   }
   .setting-group { display: flex; flex-direction: column; gap: 6px; }
   .setting-label { font-size: 13px; font-weight: 700; color: #444; }
   .setting-input { padding: 12px; border: 1px solid #bbb; border-radius: 8px; font-size: 15px; background: #f9f9f9; }
   select.setting-input { background-color: #fff; }
 
+  .compare-link { color: var(--primary); font-weight: 600; font-size: 14px; }
   /* --- タブ --- */
   .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: #e9ecef; padding: 6px; border-radius: 12px; }
   .tab {
@@ -127,6 +128,19 @@
     display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
 
+  .thumb-open { position: absolute; inset: 0; width: 100%; border: 0; cursor: zoom-in; background: #eee; }
+  .thumb-open:focus-visible { outline: 3px solid var(--primary); outline-offset: -3px; z-index: 1; }
+  .btn-remove-thumb { z-index: 2; width: 28px; height: 28px; }
+  .source-dialog { width: min(94vw, 1000px); max-height: 94vh; max-width: 100%; padding: 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); }
+  .source-dialog::backdrop { background: rgba(0,0,0,.55); }
+  .source-dialog header { padding: 0; }
+  .source-dialog h2 { font-size: 17px; margin: 0; }
+  .source-dialog button, .source-dialog select { font: inherit; padding: 6px 10px; color: var(--primary); background: white; border: 1px solid var(--border); border-radius: 6px; }
+  .source-view-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+  .source-view-port { overflow: auto; max-height: 68vh; background: #e9edf0; overscroll-behavior: contain; }
+  .source-view-port img { height: auto; display: block; margin: 0 auto; }
+  #imageLoadStatus { margin: 0; color: #7d4312; font-size: 13px; }
+  #imageLoadStatus:empty { display: none; }
   /* --- メインテキスト --- */
   textarea {
     width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px;
@@ -135,7 +149,12 @@
   }
   textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
   #inputText { min-height: 100px; }
-  #outputText { min-height: 350px; background: #fcfcfc; border-color: #d1d9e6; color: #212529; font-family: "Hiragino Sans", sans-serif; }
+  .document-editor[hidden], .btn-main[hidden], .document-notice[hidden] { display: none; }
+  .document-editor + .document-editor { margin-top: 16px; }
+  .document-editor label { display: block; font-size: 14px; font-weight: 700; margin: 0 0 4px; }
+  .document-notice { font-size: 13px; margin: 6px 0 10px; color: #684009; }
+  .btn-main:disabled { opacity: .5; cursor: not-allowed; }
+  .document-editor textarea { min-height: 350px; resize: vertical; background: #fcfcfc; border-color: #d1d9e6; color: #212529; font-family: "Hiragino Sans", sans-serif; }
 
   /* --- ボタン --- */
   .btn-main {
@@ -163,6 +182,32 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   #cameraInput { display: none; }
 
+
+  .source-review { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+  .source-review summary { cursor: pointer; color: var(--primary); font-weight: 700; }
+  .source-review p { margin: 10px 0; line-height: 1.5; }
+  .source-review-label { margin: 8px 0 4px; font-weight: 700; color: #455361; }
+  .source-review-memo { max-height: 17em; overflow: auto; padding: 8px; background: #f6f8fa; border-radius: 4px; }
+  .source-review-memo, .source-review-fields { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+  .source-review-fields { margin-top: 8px; }
+  .source-review a { display: inline-block; margin-top: 8px; color: var(--primary); }
+  .source-review[hidden], .source-review [hidden] { display: none; }
+  .case-toolbar { display: flex; justify-content: flex-end; margin: 0 0 8px; }
+  #newCaseBtn { padding: 7px 13px; background: white; border: 1px solid #a9b6c1; border-radius: 6px; color: #294052; font: inherit; font-weight: 600; cursor: pointer; }
+  #documentCaseStatus { padding: 9px 12px; border-left: 3px solid #a96315; background: #fff5d9; color: #563509; font-size: 14px; }
+  .btn-clear-imgs { flex: 0 0 auto; padding: 6px 8px; }
+  #inputCard, #outputCard { min-width: 0; }
+  @media (min-width: 950px) {
+    .container { max-width: 1220px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; }
+    .container > header { grid-row: 1; grid-column: 1 / -1; justify-content: flex-start; gap: 14px; padding-right: 135px; }
+    .case-toolbar { grid-row: 1; grid-column: 2; justify-self: end; margin: 4px 0; }
+    .tabs, .version { grid-column: 1 / -1; }
+    .tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    #inputCard { grid-column: 1; }
+    #outputCard { grid-column: 2; }
+    #inputText { min-height: 240px; resize: vertical; }
+    .document-editor textarea { resize: vertical; }
+  }
 </style>
 </head>
 <body>
@@ -175,7 +220,7 @@
     <h1>Med-Doc <span style="font-size:0.8em; opacity:0.6;">Pro</span>
       <span class="badge" id="modelBadge">Loading...</span>
     </h1>
-    <button class="btn-settings" onclick="toggleSettings()">⚙️</button>
+    <button class="btn-settings" aria-label="設定" onclick="toggleSettings()">⚙️</button>
   </header>
 
   <div id="settingsOverlay" onclick="toggleSettings()"></div>
@@ -202,10 +247,15 @@
         <button type="button" onclick="fetchAvailableModels()" style="padding:5px 10px; border:1px solid var(--primary); background:#fff; color:var(--primary); border-radius:6px; cursor:pointer; white-space:nowrap;">最新取得</button>
       </div>
     </div>
+    <a class="compare-link" href="compare.html" target="_blank" rel="noopener">モデルを伏せて文書を比較 ↗</a>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:10px;">
       <button onclick="window.location.reload(true)" style="background:#666; font-size:0.8rem; padding:5px 10px; border:none; color:#fff; border-radius:6px; cursor:pointer;">アプリを更新</button>
       <button onclick="toggleSettings()" style="padding:10px 20px; border:none; background:var(--primary); color:#fff; border-radius:6px; font-weight:bold;">閉じる</button>
     </div>
+  </div>
+
+  <div class="case-toolbar">
+    <button type="button" id="newCaseBtn" onclick="resetCase()">新しい症例</button>
   </div>
 
   <div class="tabs">
@@ -217,7 +267,7 @@
     <button class="tab" onclick="setMode('consult')" id="tabConsult">コンサルト</button>
   </div>
 
-  <div class="card">
+  <div class="card" id="inputCard">
     
     <div id="consultFields" class="field-grid">
       <div><span class="field-label">宛先診療科</span><select id="targetDept" class="input-field">
@@ -274,17 +324,27 @@
     <hr style="width:100%; border:0; border-top:1px dashed #ddd; margin:12px 0;">
 
     <div class="label-row">
-       <div class="btn-camera" onclick="document.getElementById('cameraInput').click()"><span>📷 経過/画像 (複数可)</span></div>
-       <button class="btn-clear-imgs" onclick="clearImages()">全削除</button>
+       <button type="button" class="btn-camera" onclick="document.getElementById('cameraInput').click()"><span>📷 経過/画像 (複数可)</span></button>
+       <button type="button" class="btn-clear-imgs" onclick="clearImages()">画像を全削除</button>
     </div>
     <div class="label-row" style="margin-top:8px;">
        <button type="button" class="btn-capture" onclick="captureScreenOrWindow()">🖥️ 画面・ウィンドウをキャプチャ</button>
     </div>
     <input type="file" id="cameraInput" accept="image/*" multiple onchange="handleImageSelect(this)">
+    <p id="imageLoadStatus" role="status"></p>
     <div class="image-grid" id="imageGrid"></div>
+    <dialog id="sourceImageDialog" class="source-dialog" aria-labelledby="sourceImageTitle" onclose="document.getElementById('sourceImagePixels').removeAttribute('src')">
+      <header><h2 id="sourceImageTitle">添付画像</h2><button type="button" onclick="closeSourceImage()">閉じる</button></header>
+      <div class="source-view-tools">
+        <label>表示画像<select id="sourceImageKind" onchange="refreshSourceImage()"><option value="sent">AIへの送信画像</option><option value="original">原画像</option></select></label>
+        <label>倍率<select id="sourceImageZoom" onchange="refreshSourceImage()"><option value="fit">画面に合わせる</option><option value="1">100%</option><option value="2">200%</option></select></label>
+        <span id="sourceImageDims"></span>
+      </div>
+      <div class="source-view-port" tabindex="0" aria-label="拡大画像をスクロール"><img id="sourceImagePixels" alt="選択した資料画像"></div>
+    </dialog>
 
     <div class="hint" id="modeHint"></div>
-    <div class="label-row"><label for="inputText">画像・メモ（上の画像と一緒にAIへ送る補足）</label></div>
+    <div class="label-row"><label for="inputText">原資料メモ（画像と併用可）</label></div>
     <textarea id="inputText"></textarea>
 
     <button class="btn-main btn-generate" id="generateBtn" onclick="generateDoc()">
@@ -292,18 +352,44 @@
     </button>
   </div>
 
-  <div class="card">
+  <div class="card" id="outputCard">
     <div class="label-row"><label>iNote貼付用</label><span style="font-size:10px; color:#999;" id="statusText"></span></div>
+    <p id="documentCaseStatus" role="status" hidden></p>
     <p id="requestUsage" role="status" style="font-size:12px; color:#4d6070; margin:0 0 6px"></p>
-    <textarea id="outputText" readonly placeholder="ここに生成結果が出ます"></textarea>
+    <details id="sourceReview" class="source-review" hidden>
+      <summary>この文書の入力資料と照合</summary>
+      <p>日付・数値・単位、治療を選んだ理由を原文と照らして確認できます。</p>
+      <div class="source-review-label">送信したメモ</div>
+      <div class="source-review-memo" id="sourceReviewMemo"></div>
+      <div class="source-review-fields" id="sourceReviewFields" hidden></div>
+      <a id="sourceReviewImages" href="#imageGrid" hidden></a>
+    </details>
+    <p class="document-notice" id="partialDocumentNotice" role="status" hidden>出力上限に達しました。「続きを書く」で残りを生成してください。</p>
+    <p class="document-notice" id="splitDocumentNotice" role="status" hidden>2つの文書の区切りを確認できませんでした。原文を編集して、症状詳記の先頭にカーソルを置くと分割できます。</p>
+    <div class="document-editor" id="singleOutputGroup">
+      <label id="singleOutputLabel" for="outputText">退院サマリー</label>
+      <textarea id="outputText" readonly oninput="handleDocumentEdit()" oncopy="guardNativeCopy(event, 'single')" oncut="guardNativeCopy(event, 'single')" placeholder="生成後、ここで本文を編集できます"></textarea>
+      <button class="btn-main btn-copy" data-copy-document id="singleCopyBtn" onclick="copyToClipboard('single')" disabled>iNote用にコピー</button>
+      <button class="btn-main" id="splitOutputBtn" onclick="splitAtCursor()" hidden>カーソル位置で2文書に分ける</button>
+    </div>
+    <div class="document-editor" id="summaryOutputGroup" hidden>
+      <label for="summaryOutput">退院サマリー</label>
+      <textarea id="summaryOutput" readonly oninput="handleDocumentEdit()" oncopy="guardNativeCopy(event, 'summary')" oncut="guardNativeCopy(event, 'summary')" placeholder="生成後、ここで本文を編集できます"></textarea>
+      <button class="btn-main btn-copy" data-copy-document id="summaryCopyBtn" onclick="copyToClipboard('summary')" disabled>退院サマリーをコピー</button>
+    </div>
+    <div class="document-editor" id="shokiOutputGroup" hidden>
+      <label for="shokiOutput">症状詳記</label>
+      <textarea id="shokiOutput" readonly oninput="handleDocumentEdit()" oncopy="guardNativeCopy(event, 'shoki')" oncut="guardNativeCopy(event, 'shoki')" placeholder="生成後、ここで本文を編集できます"></textarea>
+      <button class="btn-main btn-copy" data-copy-document id="shokiCopyBtn" onclick="copyToClipboard('shoki')" disabled>症状詳記をコピー</button>
+    </div>
     <button class="btn-main btn-continue" id="continueBtn" onclick="generateContinue()">🔄 続きを書く</button>
-    <button class="btn-main btn-copy" onclick="copyToClipboard()">📋 コピー (iNoteへ)</button>
   </div>
   
-  <div style="text-align:center; font-size:10px; color:#aaa; margin-top:20px;">Med-Doc Gen v5.4.0</div>
+  <div class="version" style="text-align:center; font-size:11px; color:#596777; margin-top:20px;">Med-Doc Gen v5.5.0</div>
 </div>
 
 <script>
+  /* 2026-11-17 | v5.5.0 | 症例切り替え、原資料照合、文書別編集・コピー */
   /* 2026-11-17 | v5.4.0 | Gemini 4と現在のモデル一覧に対応 */
   /* 2026-07-22 | v5.3.0 | Gemini Developer API / Vertex AI Express Mode切り替えに対応 */
   /* 2026-06-29 | v5.2.1 | 画像の全削除ボタンを明示的なグローバル関数に修正 */
@@ -333,8 +419,10 @@
   let currentImages = [];
   let lastContentsParts = null;
   let lastUserContent = null;
+  let lastSystemPrompt = null;
   let modelFetchSequence = 0;
   let documentRevision = 0;
+  let pendingDocumentAction = '';
   let lastDocumentInputs = null;
   let activeGeneration = null;
   let lastFinishReason = '';
@@ -405,6 +493,47 @@
           + ' トークン · Developer API有料標準料金換算 約' + yen.toFixed(2) + '円（1ドル160円）';
   }
 
+  const SOURCE_GROUNDING_RULES = `【全モード共通：症例の事実を記載する際の優先ルール】
+患者の所見、検査値、治療とその理由は、この症例のメモ・判読できる画像・医師が入力した個別項目に根拠がある内容だけを書く。時系列、日付、数値、単位、肯定・否定、疑いと確定の区別を保つ。読み取れない文字や食い違う数値を推測で埋めない。
+以下の制約は、ほかの指示の「必ず記載」「文言を追加」や例文に優先する。記載例、診療・算定基準、ガイドラインや一般的な適応はこの患者の事実の根拠にならない。以前生成した文書も独立した根拠にしない。
+たとえば輸血製剤と投与量だけが記録されていれば、その事実だけを書く。出血部位、検査値の変動・目標、輸血の理由や指針を遵守したという記載は、それぞれの裏付けがある場合だけ加える。根拠がない理由、未記録のスコア、算定の可否を作らない。本文の構成と文体は各文書の指定に従う。`;
+
+  let renderedEvidenceInputs = null;
+  function renderDocumentEvidence() {
+    const review = document.getElementById('sourceReview');
+    const snapshot = inputsMatch(lastDocumentInputs) ? lastDocumentInputs : null;
+    if (snapshot === renderedEvidenceInputs) return;
+    renderedEvidenceInputs = snapshot;
+    const memo = document.getElementById('sourceReviewMemo');
+    const fields = document.getElementById('sourceReviewFields');
+    const images = document.getElementById('sourceReviewImages');
+    review.hidden = !snapshot;
+    if (!snapshot) {
+      review.open = false;
+      memo.textContent = fields.textContent = images.textContent = '';
+      fields.hidden = images.hidden = true;
+      return;
+    }
+
+    // The visible inputs still match the snapshot that produced the draft.
+    memo.textContent = document.getElementById('inputText').value.trim() || 'メモの入力なし';
+    const sourceProfile = [['sourceDept', '紹介元'], ['referrerName', '紹介者']];
+    const modeFields = {
+      certificate: [['certificatePurpose', '提出目的'], ['certificateDuration', '療養期間'], ['certificateRecipient', '提出先']],
+      consult: [['targetDept', '依頼先'], ['consultPurpose', '依頼目的'], ...sourceProfile],
+      letter: [['targetHospital', '紹介先'], ['letterPurpose', '紹介目的'], ...sourceProfile]
+    };
+    const lines = [];
+    for (const [id, label] of modeFields[currentMode] || []) {
+      const value = document.getElementById(id).value;
+      if (value) lines.push(label + '：' + value);
+    }
+    fields.textContent = lines.join('\n');
+    fields.hidden = !lines.length;
+    images.textContent = snapshot.images.length ? '添付画像 ' + snapshot.images.length + '枚を確認' : '';
+    images.hidden = !snapshot.images.length;
+  }
+
   async function callGemini(systemPrompt, userContent, previousAssistantText) {
     if (!apiKey) throw new Error('選択中のAPIプロバイダー用キーを設定してください');
     if (!currentModel) throw new Error('使用モデルを選択してください');
@@ -422,7 +551,7 @@
     } else {
       contents.push({ role: 'user', parts: userContent });
     }
-    const payload = { systemInstruction: { parts: [{ text: systemPrompt }] }, contents };
+    const payload = { systemInstruction: { parts: [{ text: systemPrompt }, { text: SOURCE_GROUNDING_RULES }] }, contents };
     if (!model.startsWith('gemini-4-')) {
       payload.generationConfig = { temperature: 0.2, maxOutputTokens: 8192 };
     }
@@ -463,7 +592,7 @@
       throw error;
     } finally {
       clearTimeout(timeout);
-      activeGeneration = null;
+      if (activeGeneration === controller) activeGeneration = null;
     }
   }
 
@@ -616,7 +745,9 @@
       targetDeptSelect.appendChild(option);
     });
 
+    bindCaseControls();
     setMode('summary');
+    updateDocumentCaseControls();
   };
 
   /* --- プロンプト生成ロジック --- */
@@ -710,138 +841,225 @@ ${RECEIPT_RULES}
     localStorage.setItem('med_doc_source_dept', document.getElementById('sourceDept').value);
     localStorage.setItem('med_doc_referrer_name', document.getElementById('referrerName').value);
   }
-  async function handleImageSelect(input) {
-    if (input.files && input.files.length > 0) {
-      let successCount = 0;
-      let failCount = 0;
-      for (let file of Array.from(input.files)) {
-        try {
-          await processAndAddImage(file);
-          successCount++;
-        } catch (e) {
-          failCount++;
-          console.error('画像処理エラー:', e);
-        }
-      }
-      input.value = '';
-      if (failCount > 0) {
-        showToast(`${successCount}枚追加、${failCount}枚失敗`, failCount === input.files.length ? 'error' : 'warning');
-      } else {
-        showToast(`${successCount}枚の画像を追加しました`, 'success');
+  let imageBatchEpoch = 0;
+  let pendingImageJobs = 0;
+  const sourceImages = [];
+  const captureStreams = new Set();
+  let activeImageIndex = -1;
+  const maxImageBase64Chars = 18000000;
+  const perImageBudget = 4000000;
+
+  function hasPendingCaseImages() {
+    return pendingImageJobs > 0;
+  }
+  function notifyImageChange() {
+    if (typeof updateDocumentCaseControls === 'function') updateDocumentCaseControls();
+  }
+  async function runImageJob(task) {
+    const epoch = imageBatchEpoch;
+    pendingImageJobs++;
+    notifyImageChange();
+    try { await task(epoch); }
+    finally {
+      if (epoch === imageBatchEpoch) {
+        pendingImageJobs--;
+        notifyImageChange();
       }
     }
   }
-  function processAndAddImage(file) {
-    return new Promise((resolve, reject) => {
-      if (!file.type.startsWith('image/')) {
-        reject(new Error('画像ファイルではありません'));
-        return;
+  function encodeSourceImage(img, preferPng) {
+    const width = img.naturalWidth, height = img.naturalHeight;
+    if (!width || !height) throw new Error('画像サイズを取得できません。');
+    let scale = Math.min(1, 4096 / Math.max(width, height), Math.sqrt(12000000 / (width * height)));
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('画像を変換できません。');
+    for (let attempt = 0; attempt < 6; attempt++) {
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const formats = preferPng ? ['image/png', 'image/jpeg'] : ['image/jpeg'];
+      for (const mimeType of formats) {
+        const url = canvas.toDataURL(mimeType, 0.94);
+        const prefix = 'data:' + mimeType + ';base64,';
+        if (!url.startsWith(prefix) || url.length <= prefix.length) throw new Error('画像を変換できません。');
+        if (url.length - prefix.length <= perImageBudget) {
+          return { data: url.slice(prefix.length), mimeType, width: canvas.width, height: canvas.height };
+        }
       }
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('ファイル読み込みに失敗しました'));
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            let w = img.width, h = img.height, max = 1500;
-            if (w > h && w > max) { h *= max/w; w = max; } else if (h > max) { w *= max/h; h = max; }
-            canvas.width = w; canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              reject(new Error('Canvasの初期化に失敗しました'));
-              return;
-            }
-            ctx.drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            if (!dataUrl || dataUrl.length < 100) {
-              reject(new Error('画像の変換に失敗しました'));
-              return;
-            }
-            currentImages.push(dataUrl.split(',')[1]);
-            renderImageGrid();
-            resolve();
-          } catch (err) {
-            reject(new Error('画像処理中にエラーが発生しました: ' + err.message));
-          }
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      scale *= 0.78;
+    }
+    throw new Error('画像が大きすぎます。');
+  }
+  async function processAndAddImage(file, epoch) {
+    if (!file.type.startsWith('image/')) throw new Error('画像形式を確認してください。');
+    const originalUrl = URL.createObjectURL(file);
+    let retained = false;
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('画像を読み込めません。'));
+        img.src = originalUrl;
+      });
+      if (epoch !== imageBatchEpoch) return;
+      const item = encodeSourceImage(img, file.type !== 'image/jpeg');
+      const used = currentImages.reduce((sum, data) => sum + data.length, 0);
+      if (used + item.data.length > maxImageBase64Chars) throw new Error('送信画像の合計サイズが上限に達しました。画像を減らしてください。');
+      currentImages.push(item.data);
+      sourceImages.push({ originalUrl, originalWidth: img.naturalWidth, originalHeight: img.naturalHeight,
+        width: item.width, height: item.height, mimeType: item.mimeType });
+      retained = true;
+      renderImageGrid();
+    } finally {
+      if (!retained) URL.revokeObjectURL(originalUrl);
+    }
+  }
+  async function handleImageSelect(input) {
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (!files.length) return;
+    return runImageJob(async epoch => {
+      let successes = 0, failure = '';
+      for (const file of files) {
+        if (epoch !== imageBatchEpoch) return;
+        try { await processAndAddImage(file, epoch); successes++; }
+        catch (error) { failure = error.message; }
+      }
+      if (epoch !== imageBatchEpoch) return;
+      const message = failure ? `${successes} 枚追加・${files.length - successes} 枚失敗。${failure}` : `${successes}枚の画像を追加しました`;
+      if (failure) document.getElementById('imageLoadStatus').textContent = message;
+      showToast(message, failure ? 'warning' : 'success');
     });
+  }
+  function imageContentPart(data, index) {
+    return { inlineData: { mimeType: sourceImages[index]?.mimeType || 'image/jpeg', data } };
+  }
+  function refreshSourceImage() {
+    const info = sourceImages[activeImageIndex];
+    if (!info) return;
+    const isOriginal = document.getElementById('sourceImageKind').value === 'original';
+    const width = isOriginal ? info.originalWidth : info.width;
+    const height = isOriginal ? info.originalHeight : info.height;
+    const zoom = document.getElementById('sourceImageZoom').value;
+    const preview = document.getElementById('sourceImagePixels');
+    preview.src = isOriginal ? info.originalUrl : 'data:' + info.mimeType + ';base64,' + currentImages[activeImageIndex];
+    preview.style.width = zoom === 'fit' ? 'auto' : (width * Number(zoom)) + 'px';
+    preview.style.maxWidth = zoom === 'fit' ? '100%' : 'none';
+    document.getElementById('sourceImageDims').textContent = width + ' × ' + height + ' px';
+  }
+  function openSourceImage(index) {
+    activeImageIndex = index;
+    document.getElementById('sourceImageTitle').textContent = '添付画像 ' + (index + 1);
+    document.getElementById('sourceImageKind').value = 'sent';
+    document.getElementById('sourceImageZoom').value = 'fit';
+    refreshSourceImage();
+    const dialog = document.getElementById('sourceImageDialog');
+    if (!dialog.open) {
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    }
+  }
+  function closeSourceImage() {
+    activeImageIndex = -1;
+    const dialog = document.getElementById('sourceImageDialog');
+    if (dialog.open && typeof dialog.close === 'function') dialog.close();
+    else if (dialog.open) dialog.removeAttribute('open');
+    const pixels = document.getElementById('sourceImagePixels');
+    if (pixels.src) pixels.removeAttribute('src');
   }
   function renderImageGrid() {
-    const grid = document.getElementById('imageGrid'); grid.innerHTML = '';
-    currentImages.forEach((b64, i) => {
+    const grid = document.getElementById('imageGrid');
+    grid.innerHTML = '';
+    currentImages.forEach((data, i) => {
       const div = document.createElement('div'); div.className = 'thumb-container';
-      div.innerHTML = `<img src="data:image/jpeg;base64,${b64}" class="thumb-img"><button class="btn-remove-thumb" onclick="removeImg(${i})">×</button>`;
-      grid.appendChild(div);
+      const open = document.createElement('button'); open.type = 'button'; open.className = 'thumb-open';
+      open.setAttribute('aria-label', '画像 ' + (i + 1) + ' を拡大');
+      open.onclick = () => openSourceImage(i);
+      const img = document.createElement('img'); img.className = 'thumb-img'; img.alt = '';
+      img.src = 'data:' + imageContentPart(data, i).inlineData.mimeType + ';base64,' + data;
+      open.appendChild(img);
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn-remove-thumb';
+      remove.textContent = '×'; remove.setAttribute('aria-label', '画像 ' + (i + 1) + ' を削除');
+      remove.onclick = () => window.removeImg(i);
+      div.appendChild(open); div.appendChild(remove); grid.appendChild(div);
     });
+    notifyImageChange();
   }
-  window.removeImg = (i) => { currentImages.splice(i, 1); renderImageGrid(); };
-  window.clearImages = () => {
-    const hadImages = currentImages.length > 0;
-    currentImages = [];
+  window.removeImg = i => {
+    closeSourceImage();
+    const [source] = sourceImages.splice(i, 1);
+    if (source) URL.revokeObjectURL(source.originalUrl);
+    currentImages.splice(i, 1);
     renderImageGrid();
-    const input = document.getElementById('cameraInput');
-    if (input) input.value = '';
-    showToast(hadImages ? '画像を削除しました' : '削除する画像はありません', hadImages ? 'warning' : 'info');
+  };
+  function resetCaseImageSources() {
+    imageBatchEpoch++;
+    pendingImageJobs = 0;
+    captureStreams.forEach(stream => stream.getTracks().forEach(track => track.stop()));
+    captureStreams.clear();
+    closeSourceImage();
+    sourceImages.splice(0).forEach(source => URL.revokeObjectURL(source.originalUrl));
+    currentImages = [];
+    document.getElementById('cameraInput').value = '';
+    document.getElementById('imageLoadStatus').textContent = '';
+    renderImageGrid();
+  }
+  window.clearImages = () => {
+    resetCaseImageSources();
+    showToast('添付画像を削除しました', 'info');
   };
 
-  /** 画面・ウィンドウをキャプチャして1枚画像として追加（getDisplayMedia）。HTTPSまたはlocalhost必須。 */
   async function captureScreenOrWindow() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
       showToast('このブラウザでは画面キャプチャに対応していません', 'warning');
       return;
     }
-    let stream = null;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    } catch (e) {
-      if (e.name === 'NotAllowedError') {
-        showToast('キャプチャがキャンセルされました', 'info');
-      } else {
-        showToast('画面キャプチャに失敗しました（HTTPSまたはlocalhostでお試しください）', 'error');
+    return runImageJob(async epoch => {
+      let stream, video, timer;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        if (epoch !== imageBatchEpoch) return;
+        captureStreams.add(stream);
+        video = document.createElement('video');
+        video.muted = true; video.playsInline = true;
+        await new Promise((resolve, reject) => {
+          video.onloadeddata = resolve;
+          video.onerror = () => reject(new Error('キャプチャ画像を読み込めません。'));
+          timer = setTimeout(() => reject(new Error('画面キャプチャがタイムアウトしました。')), 10000);
+          video.srcObject = stream;
+          video.play().catch(reject);
+        });
+        if (epoch !== imageBatchEpoch) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx || !canvas.width || !canvas.height) throw new Error('画面を取得できません。');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        stream.getTracks().forEach(track => track.stop());
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (epoch !== imageBatchEpoch) return;
+        if (!blob) throw new Error('画面を画像に変換できません。');
+        await processAndAddImage(blob, epoch);
+        if (epoch === imageBatchEpoch) showToast('画面を1枚追加しました', 'success');
+      } catch (error) {
+        if (epoch === imageBatchEpoch) {
+          const message = error.name === 'NotAllowedError' ? '画面キャプチャをキャンセルしました' : '画面キャプチャに失敗しました。' + error.message;
+          document.getElementById('imageLoadStatus').textContent = message;
+          showToast(message, 'warning');
+        }
+      } finally {
+        clearTimeout(timer);
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          captureStreams.delete(stream);
+        }
+        if (video) video.srcObject = null;
       }
-      return;
-    }
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.muted = true;
-    video.playsInline = true;
-    await video.play().catch(() => {});
-    await new Promise((resolve) => {
-      if (video.readyState >= 2) resolve();
-      else video.onloadeddata = resolve;
     });
-    await new Promise(r => setTimeout(r, 150));
-    const w = video.videoWidth, h = video.videoHeight;
-    if (!w || !h) {
-      stream.getTracks().forEach(t => t.stop());
-      showToast('キャプチャに失敗しました', 'error');
-      return;
-    }
-    const canvas = document.createElement('canvas');
-    let cw = w, ch = h, max = 1500;
-    if (w > h && w > max) { ch = Math.round(h * max / w); cw = max; } else if (h > max) { cw = Math.round(w * max / h); ch = max; }
-    canvas.width = cw; canvas.height = ch;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      stream.getTracks().forEach(t => t.stop());
-      showToast('キャプチャに失敗しました', 'error');
-      return;
-    }
-    ctx.drawImage(video, 0, 0, cw, ch);
-    stream.getTracks().forEach(t => t.stop());
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    if (!dataUrl || dataUrl.length < 100) {
-      showToast('画像の変換に失敗しました', 'error');
-      return;
-    }
-    currentImages.push(dataUrl.split(',')[1]);
-    renderImageGrid();
-    showToast('画面を1枚追加しました', 'success');
   }
 
   function buildDocumentContentsParts(freeText, leadText, imageOnlyLeadText = null) {
@@ -850,7 +1068,7 @@ ${RECEIPT_RULES}
     const hasText = freeText.length > 0;
 
     if (hasImages) {
-      currentImages.forEach(d => contentsParts.push({ inlineData: { mimeType: "image/jpeg", data: d } }));
+      currentImages.forEach((data, i) => contentsParts.push(imageContentPart(data, i)));
     }
 
     const instruction = "詳細が読み取れない情報は捏造せず、また「不明」とも書かずに、判明している情報だけで自然な文章にすること。編集の手間を省くため、不明な箇所の注釈は不要。";
@@ -879,7 +1097,7 @@ ${RECEIPT_RULES}
   }
 
   // サマリー＆詳記モード: 画像を1回だけ解析し、2文書をまとめて出力する
-  async function generateSummaryAndShoki(freeText) {
+  function buildSummaryAndShokiRequest(freeText) {
     const systemPrompt = `あなたは医療文書作成を支援する医師向けAIです。
 提供された画像・メモを一度だけ丁寧に読み取り、その同じ共通情報から「退院サマリー」と「症状詳記」をそれぞれ作成してください。
 片方を短く省略せず、各文書の目的に合わせて必要な情報を十分に記載してください。
@@ -910,35 +1128,96 @@ ${getBasePrompt('shoki')}
       '以下の画像(カルテ等)を一度だけ解析して、退院サマリーと症状詳記の2文書を作成せよ。'
     );
     const userContent = buildUserContent(contentsParts);
-    return await callGemini(systemPrompt, userContent, null);
+    return { systemPrompt, contentsParts, userContent };
   }
 
+  const caseFields = ['inputText', 'targetDept', 'consultPurpose', 'targetHospital', 'letterPurpose',
+    'certificatePurpose', 'certificateDuration', 'certificateRecipient'];
+  const documentFields = [...caseFields, 'sourceDept', 'referrerName'];
+
   function captureDocumentInputs() {
-    const fields = ['inputText', 'targetDept', 'consultPurpose', 'targetHospital', 'letterPurpose',
-      'certificatePurpose', 'certificateDuration', 'certificateRecipient', 'sourceDept', 'referrerName'];
-    return { fields: fields.map(id => document.getElementById(id).value), images: currentImages.slice() };
+    return { revision: documentRevision, mode: currentMode,
+      fields: documentFields.map(id => document.getElementById(id).value), images: currentImages.slice() };
   }
 
   function inputsMatch(snapshot) {
-    if (!snapshot) return false;
+    if (!snapshot || snapshot.revision !== documentRevision || snapshot.mode !== currentMode) return false;
     const now = captureDocumentInputs();
     return snapshot.fields.every((value, i) => value === now.fields[i]) &&
       snapshot.images.length === now.images.length && snapshot.images.every((image, i) => image === now.images[i]);
   }
 
+  function canUseGeneratedDocument() {
+    return !pendingDocumentAction && !hasPendingCaseImages() && inputsMatch(lastDocumentInputs);
+  }
+
+  function updateDocumentCaseControls() {
+    const imagesPending = hasPendingCaseImages();
+    const matches = inputsMatch(lastDocumentInputs);
+    const usable = !pendingDocumentAction && !imagesPending && matches;
+    document.getElementById('generateBtn').disabled = Boolean(pendingDocumentAction) || imagesPending;
+    const continueButton = document.getElementById('continueBtn');
+    continueButton.disabled = !usable;
+    const hasContinuation = matches && lastContentsParts?.length && lastUserContent;
+    continueButton.style.display = hasContinuation && pendingDocumentAction !== 'generate' ? 'flex' : 'none';
+    document.querySelectorAll('[data-copy-document]').forEach(button => { button.disabled = !usable; });
+    const notice = document.getElementById('documentCaseStatus');
+    let message = '';
+    if (lastDocumentInputs && !matches) {
+      message = '表示中の文書は変更前の入力から生成されています。現在の入力で生成すると編集・コピーできます。';
+    } else if (lastDocumentInputs && imagesPending) {
+      message = '画像を読み込んでいます。完了するまで編集・コピーはできません。';
+    }
+    if (notice.textContent !== message) notice.textContent = message;
+    notice.hidden = !message;
+    syncDocumentEditorState();
+    renderDocumentEvidence();
+  }
+
+  function bindCaseControls() {
+    documentFields.forEach(id => {
+      const field = document.getElementById(id);
+      field.addEventListener('input', updateDocumentCaseControls);
+      field.addEventListener('change', updateDocumentCaseControls);
+    });
+    // Cover browser menu and keyboard copy/cut, including a selection made before the source changed.
+    ['copy', 'cut', 'dragstart'].forEach(type => window.addEventListener(type, event => {
+      if (event.target.closest?.('#outputText, #summaryOutput, #shokiOutput') && !canUseGeneratedDocument()) {
+        event.preventDefault();
+      }
+    }, true));
+  }
+
+  function resetCase() {
+    const hasContent = caseFields.some(id => document.getElementById(id).value) ||
+      currentImages.length || lastDocumentInputs || pendingDocumentAction || hasPendingCaseImages();
+    if (hasContent && !confirm('現在の症例の入力・画像・生成文を消去して、新しい症例を開始しますか？')) return;
+    clearCurrentDocument();
+    caseFields.forEach(id => { document.getElementById(id).value = ''; });
+    resetCaseImageSources();
+    updateDocumentCaseControls();
+    document.getElementById('inputText').focus();
+    showToast('新しい症例を開始しました', 'success');
+  }
+
   function requireCurrentInputs(snapshot) {
+    if (hasPendingCaseImages()) throw new Error('画像の読み込み完了後に生成し直してください。');
     if (!inputsMatch(snapshot)) throw new Error('送信後に入力内容が変わりました。現在の内容で生成し直してください。');
   }
 
   async function generateDoc() {
+    if (hasPendingCaseImages()) { showToast('画像の読み込み完了後に生成してください。', 'warning'); return; }
     if (!apiKey) { showToast('設定で選択中のAPI用キーを入力してください', 'error'); toggleSettings(); return; }
     const freeText = document.getElementById('inputText').value.trim();
     if (!freeText && currentImages.length === 0) { showToast('テキストか画像を入力してください', 'warning'); return; }
 
     const btn = document.getElementById('generateBtn');
     if (btn.disabled || activeGeneration) return;
+    if (editorDirty && !confirm('再生成すると、現在の文書の編集内容が置き換わります。生成しますか？')) return;
     const revision = documentRevision;
     const inputs = captureDocumentInputs();
+    pendingDocumentAction = 'generate';
+    updateDocumentCaseControls();
     const out = document.getElementById('outputText');
     const status = document.getElementById('statusText');
     const continueBtn = document.getElementById('continueBtn');
@@ -957,15 +1236,18 @@ ${getBasePrompt('shoki')}
       // サマリー＆詳記モードの場合は1回の解析で2文書を生成
       if (currentMode === 'summary-shoki') {
         status.textContent = 'サマリー＆詳記を一括生成中...' + (out.value ? '（前回の文書を表示中）' : '');
-        const result = await generateSummaryAndShoki(freeText);
+        const { systemPrompt, contentsParts, userContent } = buildSummaryAndShokiRequest(freeText);
+        const result = await callGemini(systemPrompt, userContent, null);
         if (revision !== documentRevision) return;
         requireCurrentInputs(inputs);
-        out.value = result;
-        lastContentsParts = lastUserContent = null;
+        setEditorOutput(result);
         lastDocumentInputs = inputs;
         const partial = lastFinishReason === 'MAX_TOKENS';
-        status.textContent = partial ? '出力上限に達したため、文書は途中までです' : '完了（サマリー＆詳記）';
-        continueBtn.style.display = 'none';
+        lastContentsParts = partial ? contentsParts : null;
+        lastUserContent = partial ? userContent : null;
+        lastSystemPrompt = partial ? systemPrompt : null;
+        status.textContent = partial ? '出力上限に達しました。「続きを書く」で再開できます' : '完了（サマリー＆詳記）';
+        continueBtn.style.display = partial ? 'flex' : 'none';
         out.scrollTop = out.scrollHeight;
         showToast(status.textContent, partial ? 'warning' : 'success');
         return;
@@ -1101,7 +1383,7 @@ ${sD} ${mN}`;
       const hasText = freeText.length > 0;
 
       if (hasImages) {
-        currentImages.forEach(d => contentsParts.push({ inlineData: { mimeType: "image/jpeg", data: d } }));
+        currentImages.forEach((data, i) => contentsParts.push(imageContentPart(data, i)));
       }
 
       const instruction = "詳細が読み取れない情報は捏造せず、また「不明」とも書かずに、判明している情報だけで自然な文章にすること。編集の手間を省くため、不明な箇所の注釈は不要。";
@@ -1120,8 +1402,9 @@ ${sD} ${mN}`;
       requireCurrentInputs(inputs);
       lastContentsParts = contentsParts;
       lastUserContent = userContent;
+      lastSystemPrompt = systemPrompt;
       lastDocumentInputs = inputs;
-      out.value = result;
+      setEditorOutput(result);
       const partial = lastFinishReason === 'MAX_TOKENS';
       status.textContent = partial ? '出力上限に達しました。「続きを書く」で再開できます' : '完了';
       continueBtn.style.display = 'flex';
@@ -1134,18 +1417,17 @@ ${sD} ${mN}`;
       status.textContent = out.value ? '生成に失敗しました（前回の文書を表示中）' : '生成に失敗しました';
       continueBtn.style.display = lastUserContent && inputsMatch(lastDocumentInputs) ? 'flex' : 'none';
     } 
-    finally { 
-      btn.disabled = false;
-      const btnContent = btn.querySelector('#btnContent');
-      if (btnContent) {
-        btnContent.textContent = '✨ 生成開始';
-      } else {
-        btn.innerHTML = '<span id="btnContent">✨ 生成開始</span>';
+    finally {
+      if (revision === documentRevision) {
+        pendingDocumentAction = '';
+        restoreGenerateLabel();
+        updateDocumentCaseControls();
       }
     }
   }
 
   async function generateContinue() {
+    if (hasPendingCaseImages()) { showToast('画像の読み込み完了後に生成してください。', 'warning'); return; }
     if (!lastContentsParts || lastContentsParts.length === 0) {
       showToast('続きを生成するには、先に文書を生成してください', 'warning');
       return;
@@ -1164,114 +1446,65 @@ ${sD} ${mN}`;
     if (btn.disabled || activeGeneration || document.getElementById('generateBtn').disabled) return;
     const revision = documentRevision;
     const orgHTML = btn.innerHTML;
+    pendingDocumentAction = 'continue';
+    updateDocumentCaseControls();
     btn.disabled = true; btn.innerHTML = '<div class="spinner"></div><span>続き...</span>';
     try {
-      // 現在のモードに応じたsystemPromptを取得
-      let systemPrompt = "";
-      if (currentMode === 'consult') {
-        const tD = document.getElementById('targetDept').value || '〇〇科';
-        const p = document.getElementById('consultPurpose').value || '';
-        const sD = document.getElementById('sourceDept').value || '当科';
-        const mN = document.getElementById('referrerName').value || '担当医';
-        
-        // 依頼目的に応じたプロンプト設定
-        let purposeDescription = '';
-        if (p === '転科依頼') {
-          purposeDescription = `以下の患者を${tD}へ転科のご依頼をいたします。`;
-        } else if (p === '併診依頼') {
-          purposeDescription = '以下の患者の併診をお願いいたします。';
-        } else if (p === '専門診察および御助言依頼') {
-          purposeDescription = '以下の患者の専門診察および御助言をお願いいたします。';
-        } else if (p === '#7000番紹介依頼') {
-          purposeDescription = `他院からの紹介患者（#7000番）を${tD}にご紹介いたします。`;
-        } else {
-          purposeDescription = p ? `以下の患者の${p}をお願いいたします。` : '以下の患者のご診察をお願いいたします。';
-        }
-        
-        systemPrompt = `あなたはコンサルト依頼側の医師です。院内依頼とはいえ、各専門科への依頼なので、丁寧で礼儀正しい手紙形式で作成してください。「お疲れ様です」などのフランクな表現は避け、「お忙しい中、恐縮ですが」「いつもお世話になっております」などの丁寧な表現を使用してください。
-${FORMAT_RULES}
-${ANTI_HALLUCINATION_RULES}
-
-【重要】文体について：すべて「ですます調」で記述してください。「である」「だった」などのである調は使用せず、「です」「ます」「でした」などのですます調で統一してください。
-
-【固定パラメータ】宛先:${tD}, 依頼元:${sD} ${mN}${p ? `, 依頼目的:${p}` : ''}
-
-【構成】
-${tD} 御侍史
-
-いつもお世話になっております。${sD}の${mN}です。
-お忙しい中、恐縮ですが、${purposeDescription}
-
-【依頼目的】
-${p || '特に指定なし'}
-
-【経過・所見】
-(入力情報から要約。不明な数値は「(不明)」と書かず、自然に省略して文章化すること。依頼目的（${p || '特に指定なし'}）に合わせて適切な内容を記述すること。丁寧で専門的な表現を用いること。必ずですます調で記述すること)
-
-何卒よろしくお願い申し上げます。`;
-      } else if (currentMode === 'letter') {
-        const tH = document.getElementById('targetHospital').value || '〇〇医療機関';
-        const lP = document.getElementById('letterPurpose').value || '';
-        const sD = document.getElementById('sourceDept').value || '当科';
-        const mN = document.getElementById('referrerName').value || '担当医';
-        systemPrompt = `あなたは紹介元の医師です。紹介状を作成してください。
-${FORMAT_RULES}
-${ANTI_HALLUCINATION_RULES}
-
-【重要】文体について：すべて「ですます調」で記述してください。「である」「だった」などのである調は使用せず、「です」「ます」「でした」などのですます調で統一してください。
-
-【固定パラメータ】宛先:${tH}, 紹介元:${sD} ${mN}${lP ? `, 紹介目的:${lP}` : ''}
-
-【構成】
-[日付]
-${tH} 御机下
-
-拝啓 時下益々ご清祥のこととお慶び申し上げます。
-平素より大変お世話になっております。
-
-【紹介目的】
-${lP ? `${lP}のため、ご紹介申し上げます。` : 'ご紹介申し上げます。'}
-
-【経過】
-(入力情報から時系列で記述。詳細不明な点は「不明」と書かず、判明事実のみで構成すること。紹介目的（${lP || '特に指定なし'}）に合わせて適切な内容を記述すること。必ずですます調で記述すること)
-
-ご高診の程、何卒よろしくお願い申し上げます。
-
-敬具
-
-[自院名]
-${sD} ${mN}`;
-      } else {
-        systemPrompt = getBasePrompt(currentMode);
-      }
-
-      const added = await callGemini(systemPrompt, lastUserContent, out.value);
+      const added = await callGemini(lastSystemPrompt, lastUserContent, out.value);
       if (revision !== documentRevision) return;
       requireCurrentInputs(lastDocumentInputs);
-      out.value += added;
-      document.getElementById('statusText').textContent = lastFinishReason === 'MAX_TOKENS' ? '出力上限に達しました。「続きを書く」で再開できます' : '完了';
+      setEditorOutput(getEditedDocumentText() + added, true);
+      const partial = lastFinishReason === 'MAX_TOKENS';
+      if (currentMode === 'summary-shoki' && !partial) {
+        lastContentsParts = lastUserContent = lastSystemPrompt = null;
+        btn.style.display = 'none';
+      }
+      document.getElementById('statusText').textContent = partial ? '出力上限に達しました。「続きを書く」で再開できます' : '完了';
       out.scrollTop = out.scrollHeight;
       showToast('続きを追加しました', 'success');
     } catch(e) { 
       if (revision === documentRevision) showToast('失敗: ' + e.message, 'error');
     } 
-    finally { btn.disabled = false; btn.innerHTML = orgHTML; }
+    finally {
+      if (revision === documentRevision) {
+        pendingDocumentAction = '';
+        btn.innerHTML = orgHTML;
+        updateDocumentCaseControls();
+      }
+    }
   }
 
-  function setMode(mode) {
+  function restoreGenerateLabel() {
+    const label = document.getElementById('btnContent');
+    if (label) label.textContent = '✨ 生成開始';
+    else document.getElementById('generateBtn').textContent = '✨ 生成開始';
+  }
+
+  function clearCurrentDocument() {
     documentRevision++;
     activeGeneration?.abort();
-    currentMode = mode;
+    activeGeneration = null;
+    pendingDocumentAction = '';
     lastDocumentInputs = null;
     lastUserContent = null;
+    lastSystemPrompt = null;
     lastFinishReason = '';
     document.getElementById('requestUsage').textContent = '';
     // モード切り替え時に前回の生成状態をリセット
     lastContentsParts = null;
-    document.getElementById('continueBtn').style.display = 'none';
-    document.getElementById('outputText').value = '';
+    const continueButton = document.getElementById('continueBtn');
+    continueButton.style.display = 'none';
+    continueButton.textContent = '🔄 続きを書く';
+    restoreGenerateLabel();
+    clearDocumentEditors();
     document.getElementById('statusText').textContent = '';
-    
+  }
+
+  function setMode(mode) {
+    if (mode === currentMode && (lastDocumentInputs || activeGeneration)) return;
+    if (editorDirty && !confirm('文書の編集内容を破棄して、文書の種類を切り替えますか？')) return;
+    clearCurrentDocument();
+    currentMode = mode;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     const tabId = mode === 'summary-shoki' ? 'tabSummaryShoki' : 'tab' + mode.charAt(0).toUpperCase() + mode.slice(1);
     document.getElementById(tabId).classList.add('active');
@@ -1283,6 +1516,7 @@ ${sD} ${mN}`;
 
     document.getElementById('modeHint').innerHTML = MODE_HINTS[mode].hint;
     document.getElementById('inputText').placeholder = MODE_HINTS[mode].placeholder;
+    updateDocumentCaseControls();
   }
   
   function toggleSettings() {
@@ -1403,37 +1637,148 @@ ${sD} ${mN}`;
     badge.textContent = (apiProvider === 'vertex-express' ? 'Vertex' : 'Dev') + ' ／ ' + label;
   }
 
-  function copyToClipboard() {
-    const el = document.getElementById("outputText");
-    if(!el.value || el.value.trim().length === 0) { 
-      showToast('コピーする内容がありません', 'warning'); 
-      return; 
+  const documentModeNames = {
+    summary: '退院サマリー', shoki: '症状詳記', certificate: '診断書', letter: '紹介状', consult: 'コンサルト'
+  };
+  const editorIds = { single: 'outputText', summary: 'summaryOutput', shoki: 'shokiOutput' };
+  let splitEditors = false;
+  let editorDirty = false;
+  let editorPartial = false;
+  let editorVersion = 0;
+
+  function splitGeneratedDocuments(text) {
+    const lines = text.split(/\r?\n/);
+    const headings = [];
+    const divider = /^(?:={3,}|＝{3,}|-{3,}|\*{3,}|_{3,})$/;
+    for (let index = 0; index < lines.length; index++) {
+      const plain = lines[index].trim().replace(/^#{1,6}\s+/, '').replace(/^\*\*(.*?)\*\*$/, '$1');
+      const heading = /^(?:【(退院サマリー|症状詳記)】|(退院サマリー|症状詳記))$/.exec(plain);
+      if (heading) headings.push({ title: heading[1] || heading[2], index });
     }
-    // Clipboard APIを使用（readonly textareaでも動作）
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(el.value)
-        .then(() => showToast('コピーしました', 'success'))
-        .catch(() => {
-          // フォールバック: 古い方法を試す
-          try {
-            el.select();
-            el.setSelectionRange(0, 99999);
-            document.execCommand('copy');
-            showToast('コピーしました', 'success');
-          } catch (err) {
-            showToast('コピーに失敗しました', 'error');
-          }
-        });
-    } else {
-      // フォールバック: 古いブラウザ対応
+    if (headings.length !== 2 || headings[0].title !== '退院サマリー' || headings[1].title !== '症状詳記') return null;
+    const [first, second] = headings;
+    if (lines.slice(0, first.index).some(line => line.trim() && !divider.test(line.trim()))) return null;
+    const summaryLines = lines.slice(first.index + 1, second.index);
+    while (summaryLines.length && !summaryLines[summaryLines.length - 1].trim()) summaryLines.pop();
+    if (summaryLines.length && divider.test(summaryLines[summaryLines.length - 1].trim())) summaryLines.pop();
+    const summary = summaryLines.join('\n').trim();
+    const shoki = lines.slice(second.index + 1).join('\n').trim();
+    return summary && shoki ? { summary, shoki } : null;
+  }
+
+  function syncDocumentEditorState() {
+    const combined = currentMode === 'summary-shoki';
+    const raw = document.getElementById('outputText');
+    const ambiguous = combined && !splitEditors && (Boolean(raw.value.trim()) || editorDirty);
+    const twoEditors = combined && !ambiguous;
+    const usable = canUseGeneratedDocument();
+    document.getElementById('singleOutputGroup').hidden = twoEditors;
+    document.getElementById('summaryOutputGroup').hidden = !twoEditors;
+    document.getElementById('shokiOutputGroup').hidden = !twoEditors;
+    document.getElementById('singleOutputLabel').textContent = combined ? '生成原文（区切りを確認）' : documentModeNames[currentMode];
+    document.getElementById('partialDocumentNotice').hidden = !editorPartial;
+    document.getElementById('splitDocumentNotice').hidden = !ambiguous;
+    const splitButton = document.getElementById('splitOutputBtn');
+    splitButton.hidden = !ambiguous;
+    splitButton.disabled = !usable || !raw.value.trim();
+    document.getElementById('singleCopyBtn').hidden = combined;
+    for (const [kind, id] of Object.entries(editorIds)) {
+      const el = document.getElementById(id);
+      el.disabled = Boolean(lastDocumentInputs) && !usable;
+      el.readOnly = !usable || (kind === 'single' ? twoEditors : !splitEditors);
+      document.getElementById(kind + 'CopyBtn').disabled = !usable || !el.value.trim() ||
+        (kind === 'single' ? combined : !splitEditors);
+    }
+  }
+
+  function setEditorOutput(text, append = false) {
+    document.getElementById('outputText').value = text;
+    const pair = currentMode === 'summary-shoki' ? splitGeneratedDocuments(text) : null;
+    splitEditors = Boolean(pair);
+    document.getElementById('summaryOutput').value = pair?.summary || '';
+    document.getElementById('shokiOutput').value = pair?.shoki || '';
+    if (!append) editorDirty = false;
+    editorPartial = lastFinishReason === 'MAX_TOKENS';
+    editorVersion++;
+    syncDocumentEditorState();
+  }
+
+  function clearDocumentEditors() {
+    splitEditors = editorDirty = editorPartial = false;
+    for (const id of Object.values(editorIds)) document.getElementById(id).value = '';
+    editorVersion++;
+    syncDocumentEditorState();
+  }
+
+  function getEditedDocumentText() {
+    return document.getElementById('outputText').value;
+  }
+
+  function handleDocumentEdit() {
+    if (!canUseGeneratedDocument()) return;
+    if (splitEditors) {
+      const summary = document.getElementById('summaryOutput').value;
+      const shoki = document.getElementById('shokiOutput').value;
+      document.getElementById('outputText').value =
+        '【退院サマリー】\n' + summary + '\n\n==================================================\n\n【症状詳記】\n' + shoki;
+    }
+    editorDirty = true;
+    editorVersion++;
+    syncDocumentEditorState();
+  }
+
+  function splitAtCursor() {
+    if (!canUseGeneratedDocument() || splitEditors || currentMode !== 'summary-shoki') return;
+    const el = document.getElementById('outputText');
+    const pos = el.selectionStart;
+    const first = el.value.slice(0, pos).trim();
+    const second = el.value.slice(pos).trim();
+    if (!first || !second || pos !== el.selectionEnd) {
+      showToast('症状詳記の先頭にカーソルを置いてください', 'warning');
+      return;
+    }
+    document.getElementById('summaryOutput').value = first;
+    document.getElementById('shokiOutput').value = second;
+    splitEditors = true;
+    handleDocumentEdit();
+    document.getElementById('shokiOutput').focus();
+  }
+
+  function canCopyEditor(kind) {
+    return canUseGeneratedDocument() && Object.prototype.hasOwnProperty.call(editorIds, kind) &&
+      (currentMode === 'summary-shoki' ? splitEditors && kind !== 'single' : kind === 'single');
+  }
+
+  function guardNativeCopy(event, kind) {
+    if (canCopyEditor(kind)) return;
+    event.preventDefault();
+    showToast('現在の入力から生成した文書を確認してからコピーしてください', 'warning');
+  }
+
+  async function copyToClipboard(kind = 'single') {
+    if (!canCopyEditor(kind)) {
+      showToast('現在の入力から生成した文書を確認してからコピーしてください', 'warning');
+      return;
+    }
+    const el = document.getElementById(editorIds[kind]);
+    const text = el.value;
+    if (!text.trim()) { showToast('コピーする内容がありません', 'warning'); return; }
+    const version = editorVersion;
+    if (navigator.clipboard?.writeText) {
       try {
-        el.select();
-        el.setSelectionRange(0, 99999);
-        document.execCommand('copy');
-        showToast('コピーしました', 'success');
-      } catch (err) {
-        showToast('コピーに失敗しました', 'error');
-      }
+        await navigator.clipboard.writeText(text);
+        if (canCopyEditor(kind) && version === editorVersion) showToast('コピーしました', 'success');
+        return;
+      } catch (_) { /* WebViewなどでは選択範囲のコピーを試す。 */ }
+    }
+    if (!canCopyEditor(kind) || version !== editorVersion || el.value !== text) return;
+    try {
+      el.focus();
+      el.select();
+      if (!document.execCommand('copy')) throw new Error('copy');
+      showToast('コピーしました', 'success');
+    } catch (_) {
+      showToast('コピーできませんでした。本文を選択してコピーしてください', 'error');
     }
   }
 </script>

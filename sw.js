@@ -1,7 +1,7 @@
 const SCOPE = self.registration.scope;
 const PREFIX = 'med-doc-gen:' + SCOPE + ':';
-const CACHE_NAME = PREFIX + '5.4.0';
-const assets = ['./', 'index.html', 'manifest.json', 'icon.png'].map(path => new URL(path, SCOPE).href);
+const CACHE_NAME = PREFIX + '5.5.0';
+const assets = ['./', 'index.html', 'manifest.json', 'icon.png', 'compare.html'].map(path => new URL(path, SCOPE).href);
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
